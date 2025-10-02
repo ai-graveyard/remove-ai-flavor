@@ -1,0 +1,457 @@
+---
+description: 前端开发规范和 Next.js/React 最佳实践
+---
+
+# 前端开发规范
+
+## 技术栈
+
+- **框架**: Next.js 15.3 (App Router)
+- **UI 库**: React 19
+- **语言**: TypeScript
+- **样式**: Tailwind CSS + Shadcn UI
+- **国际化**: next-intl
+- **状态管理**: React Hooks + Context
+- **包管理**: pnpm
+
+## 项目结构
+
+```
+web/
+├── app/
+│   ├── [locale]/           # 国际化路由
+│   │   ├── layout.tsx      # 根布局
+│   │   ├── page.tsx        # 首页
+│   │   ├── login/          # 登录页面
+│   │   ├── chat/           # 聊天页面
+│   │   └── admin/          # 管理后台
+│   ├── globals.css         # 全局样式
+│   └── messages/           # 国际化翻译
+│       ├── zh.json
+│       └── en.json
+├── components/             # React 组件
+│   ├── admin/              # 后台管理模块
+│   │   ├── pages/          # 管理页面
+│   │   ├── dialogs/        # 对话框组件
+│   │   ├── components/     # 功能组件
+│   │   └── sidebar/        # 侧边栏组件
+│   ├── web/                # 前台应用模块
+│   │   ├── pages/          # 页面组件
+│   │   ├── dialogs/        # 对话框
+│   │   ├── chat/           # 聊天相关
+│   │   ├── editor/         # 编辑器
+│   │   ├── layout/         # 布局
+│   │   └── sidebar/        # 侧边栏
+│   ├── common/             # 共享组件
+│   └── ui/                 # Shadcn UI 基础组件
+├── hooks/                  # 自定义 Hooks
+├── util/                   # 工具函数
+├── i18n/                   # 国际化配置
+└── lib/                    # 库和工具
+```
+
+## 核心文件
+
+- **根布局**: [web/app/[locale]/layout.tsx](mdc:web/app/[locale]/layout.tsx)
+- **首页**: [web/app/[locale]/page.tsx](mdc:web/app/[locale]/page.tsx)
+- **聊天组件**: [web/components/web/pages/chat-content-page.tsx](mdc:web/components/web/pages/chat-content-page.tsx)
+- **共享布局**: [web/components/web/layout/shared-layout.tsx](mdc:web/components/web/layout/shared-layout.tsx)
+
+## 组件开发规范
+
+### 1. 组件结构
+
+```typescript
+'use client'  // 客户端组件需要声明
+
+import { useState } from 'react'
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/button'
+
+interface MyComponentProps {
+  title: string
+  onAction?: () => void
+}
+
+/**
+ * 我的组件描述
+ * 
+ * @param title - 组件标题
+ * @param onAction - 点击回调函数
+ */
+export default function MyComponent({ title, onAction }: MyComponentProps) {
+  const t = useTranslations('namespace')
+  const [state, setState] = useState(false)
+  
+  return (
+    <div className="p-4">
+      <h1 className="text-2xl font-bold">{t('title')}</h1>
+      <Button onClick={onAction}>{t('action')}</Button>
+    </div>
+  )
+}
+```
+
+**组件规范**:
+- 使用 TypeScript 定义 Props 接口
+- 添加 JSDoc 注释
+- 使用语义化的 HTML 标签
+- 使用 Tailwind CSS 类名
+- 客户端组件必须声明 `'use client'`
+
+### 2. 服务端组件 vs 客户端组件
+
+**服务端组件** (默认):
+- 可以直接访问后端资源
+- 不能使用 useState、useEffect 等 Hooks
+- 不能使用浏览器 API
+
+```typescript
+// 服务端组件 - 无需 'use client'
+import { getTranslations } from 'next-intl/server'
+
+export default async function ServerPage() {
+  const t = await getTranslations('common')
+  
+  // 可以直接调用 API
+  const data = await fetch('https://api.example.com/data')
+  
+  return <div>{t('title')}</div>
+}
+```
+
+**客户端组件**:
+- 可以使用 React Hooks
+- 可以使用浏览器 API
+- 需要声明 `'use client'`
+
+```typescript
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
+
+export default function ClientComponent() {
+  const t = useTranslations('common')
+  const [count, setCount] = useState(0)
+  
+  useEffect(() => {
+    // 浏览器 API
+    console.log(window.location.href)
+  }, [])
+  
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+### 3. 自定义 Hooks
+
+**Hooks 必须以 `use` 开头**:
+
+```typescript
+import { useState, useEffect } from 'react'
+
+/**
+ * 管理聊天消息的 Hook
+ * 
+ * @param chatId - 聊天 ID
+ * @returns 消息列表和相关操作函数
+ */
+export function useChatMessages(chatId: number) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [isLoading, setIsLoading] = useState(false)
+  
+  const loadMessages = async () => {
+    setIsLoading(true)
+    try {
+      const data = await fetchMessages(chatId)
+      setMessages(data)
+    } catch (error) {
+      console.error('加载消息失败:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  
+  useEffect(() => {
+    loadMessages()
+  }, [chatId])
+  
+  return { messages, isLoading, loadMessages }
+}
+```
+
+**常用自定义 Hooks**:
+- [web/hooks/use-global-user-data.tsx](mdc:web/hooks/use-global-user-data.tsx) - 全局用户数据
+- [web/hooks/use-global-chat-state.tsx](mdc:web/hooks/use-global-chat-state.tsx) - 全局聊天状态
+- [web/hooks/use-mobile.ts](mdc:web/hooks/use-mobile.ts) - 移动端检测
+
+## 路由和导航
+
+### 1. App Router
+
+```typescript
+// 页面文件: app/[locale]/chat/[chatId]/page.tsx
+interface PageProps {
+  params: { locale: string; chatId: string }
+  searchParams: { [key: string]: string }
+}
+
+export default function ChatPage({ params, searchParams }: PageProps) {
+  return <div>Chat ID: {params.chatId}</div>
+}
+```
+
+### 2. 导航
+
+使用 `next-intl` 的导航组件以保持国际化:
+
+```typescript
+import { Link, useRouter } from '@/i18n/navigation'
+
+export function MyComponent() {
+  const router = useRouter()
+  
+  return (
+    <>
+      {/* Link 组件 */}
+      <Link href="/chat">Go to Chat</Link>
+      
+      {/* 编程式导航 */}
+      <button onClick={() => router.push('/chat')}>Navigate</button>
+    </>
+  )
+}
+```
+
+## 数据获取
+
+### 1. 服务端数据获取
+
+```typescript
+export default async function ServerPage() {
+  // 直接在服务端组件中获取数据
+  const res = await fetch('https://api.example.com/data', {
+    next: { revalidate: 60 }  // 60 秒后重新验证
+  })
+  const data = await res.json()
+  
+  return <div>{data.title}</div>
+}
+```
+
+### 2. 客户端数据获取
+
+使用自定义 fetcher (参考 [web/util/fetcher.ts](mdc:web/util/fetcher.ts)):
+
+```typescript
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useLocale } from 'next-intl'
+
+export function ClientDataComponent() {
+  const locale = useLocale()
+  const [data, setData] = useState(null)
+  
+  useEffect(() => {
+    const fetchData = async () => {
+      const res = await fetch('/api/v1/data', {
+        headers: {
+          'Accept-Language': locale
+        }
+      })
+      const result = await res.json()
+      setData(result)
+    }
+    
+    fetchData()
+  }, [locale])
+  
+  return <div>{data?.title}</div>
+}
+```
+
+## 状态管理
+
+### 1. 本地状态 (useState)
+
+```typescript
+const [value, setValue] = useState<string>('')
+```
+
+### 2. 全局状态 (Context + Hooks)
+
+```typescript
+// hooks/use-global-user-data.tsx
+import { createContext, useContext, useState } from 'react'
+
+interface UserContextType {
+  user: User | null
+  setUser: (user: User | null) => void
+}
+
+const UserContext = createContext<UserContextType | undefined>(undefined)
+
+export function UserProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  
+  return (
+    <UserContext.Provider value={{ user, setUser }}>
+      {children}
+    </UserContext.Provider>
+  )
+}
+
+export function useUser() {
+  const context = useContext(UserContext)
+  if (!context) throw new Error('useUser must be used within UserProvider')
+  return context
+}
+```
+
+## 表单处理
+
+### 1. 受控组件
+
+```typescript
+'use client'
+
+import { useState } from 'react'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+
+export function LoginForm() {
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    // 提交逻辑
+  }
+  
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <Input
+        type="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Email"
+      />
+      <Input
+        type="password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Password"
+      />
+      <Button type="submit">Login</Button>
+    </form>
+  )
+}
+```
+
+## 错误处理
+
+### 1. 错误边界
+
+```typescript
+// app/[locale]/error.tsx
+'use client'
+
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error
+  reset: () => void
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center min-h-screen">
+      <h2>Something went wrong!</h2>
+      <button onClick={reset}>Try again</button>
+    </div>
+  )
+}
+```
+
+### 2. 加载状态
+
+```typescript
+// app/[locale]/loading.tsx
+export default function Loading() {
+  return (
+    <div className="flex items-center justify-center min-h-screen">
+      <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-primary"></div>
+    </div>
+  )
+}
+```
+
+## 性能优化
+
+### 1. 代码分割
+
+```typescript
+import dynamic from 'next/dynamic'
+
+// 动态导入组件
+const HeavyComponent = dynamic(() => import('@/components/HeavyComponent'), {
+  loading: () => <p>Loading...</p>
+})
+```
+
+### 2. 图片优化
+
+```typescript
+import Image from 'next/image'
+
+<Image
+  src="/logo.png"
+  alt="Logo"
+  width={200}
+  height={100}
+  priority  // 优先加载
+/>
+```
+
+### 3. 使用 memo
+
+```typescript
+import { memo } from 'react'
+
+const MyComponent = memo(function MyComponent({ data }) {
+  return <div>{data}</div>
+})
+```
+
+## TypeScript 规范
+
+```typescript
+// 定义接口
+interface User {
+  id: number
+  email: string
+  nickname?: string  // 可选属性
+}
+
+// 定义类型
+type Status = 'pending' | 'active' | 'inactive'
+
+// 函数类型
+type Callback = (value: string) => void
+
+// 泛型
+function getData<T>(url: string): Promise<T> {
+  return fetch(url).then(res => res.json())
+}
+```
+
+## 最佳实践
+
+1. **组件拆分**: 保持组件小而专注
+2. **使用 TypeScript**: 为所有 Props 和状态定义类型
+3. **避免内联样式**: 使用 Tailwind CSS 类名
+4. **国际化**: 所有文本使用 `useTranslations`
+5. **错误处理**: 使用 try-catch 和错误边界
+6. **性能优化**: 使用 memo、useMemo、useCallback
+7. **代码复用**: 提取自定义 Hooks 和工具函数

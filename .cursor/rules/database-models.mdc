@@ -1,0 +1,580 @@
+---
+description: 数据库模型设计和 SQLModel/Alembic 最佳实践
+---
+
+# 数据库模型设计规范
+
+## 技术栈
+
+- **ORM**: SQLModel (基于 Pydantic 和 SQLAlchemy)
+- **数据库**: PostgreSQL
+- **迁移工具**: Alembic
+- **连接管理**: SQLModel Session
+
+## 核心文件
+
+- **模型定义**: [api/app/models/](mdc:api/app/models/)
+- **数据库配置**: [api/app/db/base.py](mdc:api/app/db/base.py)
+- **Alembic 配置**: [api/alembic.ini](mdc:api/alembic.ini)
+- **迁移脚本**: [api/alembic/versions/](mdc:api/alembic/versions/)
+
+## 数据模型规范
+
+### 1. 基础模型结构
+
+所有模型都应继承 `SQLModel` 并设置 `table=True`:
+
+```python
+from datetime import datetime
+from typing import Optional
+from sqlmodel import SQLModel, Field
+
+class BaseModel(SQLModel):
+    """
+    基础模型类，包含公共字段。
+    
+    所有业务模型都应继承此类。
+    """
+    id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="主键 ID"
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="创建时间"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
+        description="更新时间"
+    )
+    is_deleted: bool = Field(
+        default=False,
+        description="软删除标记"
+    )
+
+class User(BaseModel, table=True):
+    """
+    用户模型。
+    
+    业务规则:
+    - 邮箱是唯一标识符
+    - 支持软删除
+    - 密码必须加密存储
+    """
+    __tablename__ = "users"
+    
+    email: str = Field(
+        unique=True,
+        index=True,
+        max_length=255,
+        description="用户邮箱"
+    )
+    hashed_password: str = Field(
+        max_length=255,
+        description="加密后的密码"
+    )
+    nickname: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="用户昵称"
+    )
+    is_active: bool = Field(
+        default=True,
+        description="账户是否激活"
+    )
+```
+
+### 2. 字段类型规范
+
+**常用字段类型**:
+
+```python
+from sqlmodel import Field, Column
+from sqlalchemy import Text, JSON
+from datetime import datetime, date
+from decimal import Decimal
+from typing import Optional, List
+
+class Product(SQLModel, table=True):
+    """产品模型示例，展示各种字段类型"""
+    
+    # 字符串字段
+    name: str = Field(max_length=200, description="产品名称")
+    
+    # 文本字段 (长文本)
+    description: str = Field(
+        sa_column=Column(Text),
+        description="产品描述"
+    )
+    
+    # 整数字段
+    stock: int = Field(default=0, description="库存数量")
+    
+    # 浮点数字段 (价格使用 Decimal)
+    price: Decimal = Field(
+        max_digits=10,
+        decimal_places=2,
+        description="产品价格"
+    )
+    
+    # 布尔字段
+    is_available: bool = Field(default=True, description="是否可用")
+    
+    # 日期时间字段
+    release_date: Optional[date] = Field(
+        default=None,
+        description="发布日期"
+    )
+    
+    # JSON 字段
+    metadata: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="元数据"
+    )
+    
+    # 枚举字段 (使用 Literal 或 Enum)
+    status: str = Field(
+        default="draft",
+        regex="^(draft|published|archived)$",
+        description="状态"
+    )
+```
+
+### 3. 索引和约束
+
+**添加索引以优化查询性能**:
+
+```python
+from sqlmodel import Field, Index
+
+class Chat(SQLModel, table=True):
+    """对话模型"""
+    __tablename__ = "chats"
+    
+    # 单列索引
+    user_id: int = Field(
+        foreign_key="users.id",
+        index=True,  # 添加索引
+        description="用户 ID"
+    )
+    
+    agent_id: int = Field(
+        foreign_key="agents.id",
+        index=True,
+        description="Agent ID"
+    )
+    
+    # 复合索引
+    __table_args__ = (
+        Index('idx_user_agent', 'user_id', 'agent_id'),
+        Index('idx_created_at', 'created_at'),
+    )
+```
+
+**唯一约束**:
+
+```python
+class Agent(SQLModel, table=True):
+    """Agent 模型"""
+    
+    # 单列唯一约束
+    slug: str = Field(
+        unique=True,
+        max_length=100,
+        description="URL 友好的标识符"
+    )
+    
+    # 复合唯一约束
+    __table_args__ = (
+        UniqueConstraint('name', 'version', name='uq_name_version'),
+    )
+```
+
+### 4. 外键关系
+
+**一对多关系**:
+
+```python
+from typing import Optional, List
+from sqlmodel import Field, Relationship
+
+class User(SQLModel, table=True):
+    """用户模型"""
+    id: Optional[int] = Field(primary_key=True)
+    email: str = Field(unique=True)
+    
+    # 反向关系
+    chats: List["Chat"] = Relationship(back_populates="user")
+
+class Chat(SQLModel, table=True):
+    """对话模型"""
+    id: Optional[int] = Field(primary_key=True)
+    title: str
+    
+    # 外键
+    user_id: int = Field(foreign_key="users.id")
+    
+    # 正向关系
+    user: Optional[User] = Relationship(back_populates="chats")
+```
+
+**多对多关系**:
+
+```python
+class UserAgentLink(SQLModel, table=True):
+    """用户和 Agent 的关联表"""
+    __tablename__ = "user_agent_links"
+    
+    user_id: int = Field(
+        foreign_key="users.id",
+        primary_key=True
+    )
+    agent_id: int = Field(
+        foreign_key="agents.id",
+        primary_key=True
+    )
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(primary_key=True)
+    
+    # 多对多关系
+    agents: List["Agent"] = Relationship(
+        back_populates="users",
+        link_model=UserAgentLink
+    )
+
+class Agent(SQLModel, table=True):
+    id: Optional[int] = Field(primary_key=True)
+    
+    users: List["User"] = Relationship(
+        back_populates="agents",
+        link_model=UserAgentLink
+    )
+```
+
+### 5. 软删除模式
+
+**所有模型都应支持软删除**:
+
+```python
+class User(SQLModel, table=True):
+    id: Optional[int] = Field(primary_key=True)
+    email: str
+    is_deleted: bool = Field(default=False, description="软删除标记")
+    deleted_at: Optional[datetime] = Field(
+        default=None,
+        description="删除时间"
+    )
+
+# CRUD 操作中过滤已删除记录
+from sqlmodel import select
+
+def get_active_users(db: Session):
+    """获取未删除的用户"""
+    statement = select(User).where(User.is_deleted == False)
+    return db.exec(statement).all()
+
+def soft_delete_user(db: Session, user_id: int):
+    """软删除用户"""
+    user = db.get(User, user_id)
+    if user:
+        user.is_deleted = True
+        user.deleted_at = datetime.utcnow()
+        db.add(user)
+        db.commit()
+```
+
+### 6. 时间戳字段
+
+**所有模型都应包含创建和更新时间**:
+
+```python
+from datetime import datetime
+from sqlmodel import Field
+
+class BaseModel(SQLModel):
+    """包含时间戳的基础模型"""
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        nullable=False,
+        description="创建时间"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        sa_column_kwargs={"onupdate": datetime.utcnow},
+        nullable=False,
+        description="更新时间"
+    )
+```
+
+## Alembic 数据库迁移
+
+### 1. 创建迁移
+
+```bash
+# 自动生成迁移脚本
+cd api
+alembic revision --autogenerate -m "添加用户表"
+
+# 手动创建空迁移
+alembic revision -m "自定义数据迁移"
+```
+
+### 2. 执行迁移
+
+```bash
+# 升级到最新版本
+alembic upgrade head
+
+# 升级到特定版本
+alembic upgrade <revision_id>
+
+# 回滚一个版本
+alembic downgrade -1
+
+# 回滚到特定版本
+alembic downgrade <revision_id>
+
+# 查看当前版本
+alembic current
+
+# 查看迁移历史
+alembic history
+```
+
+### 3. 迁移脚本示例
+
+```python
+"""添加用户表
+
+Revision ID: d936ec56f8e8
+Revises: 
+Create Date: 2024-01-01 00:00:00.000000
+
+"""
+from alembic import op
+import sqlalchemy as sa
+import sqlmodel
+
+# revision identifiers
+revision = 'd936ec56f8e8'
+down_revision = None
+branch_labels = None
+depends_on = None
+
+def upgrade() -> None:
+    """升级数据库结构"""
+    op.create_table(
+        'users',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('email', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column('hashed_password', sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column('created_at', sa.DateTime(), nullable=False),
+        sa.Column('is_deleted', sa.Boolean(), nullable=False),
+        sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
+
+def downgrade() -> None:
+    """回滚数据库结构"""
+    op.drop_index(op.f('ix_users_email'), table_name='users')
+    op.drop_table('users')
+```
+
+### 4. 数据迁移
+
+**修改现有数据的迁移**:
+
+```python
+def upgrade() -> None:
+    """迁移现有数据"""
+    # 添加新列
+    op.add_column('users', sa.Column('nickname', sa.String(100), nullable=True))
+    
+    # 更新现有数据
+    op.execute("""
+        UPDATE users 
+        SET nickname = CONCAT('User', id) 
+        WHERE nickname IS NULL
+    """)
+    
+    # 设置列为非空
+    op.alter_column('users', 'nickname', nullable=False)
+
+def downgrade() -> None:
+    """回滚数据迁移"""
+    op.drop_column('users', 'nickname')
+```
+
+## 数据库查询最佳实践
+
+### 1. 基础查询
+
+```python
+from sqlmodel import Session, select
+
+def get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+    """通过 ID 查询用户"""
+    return db.get(User, user_id)
+
+def get_user_by_email(db: Session, email: str) -> Optional[User]:
+    """通过邮箱查询用户"""
+    statement = select(User).where(User.email == email)
+    return db.exec(statement).first()
+
+def get_active_users(db: Session) -> List[User]:
+    """获取所有活跃用户"""
+    statement = select(User).where(
+        User.is_active == True,
+        User.is_deleted == False
+    )
+    return db.exec(statement).all()
+```
+
+### 2. 分页查询
+
+```python
+def get_users_paginated(
+    db: Session,
+    skip: int = 0,
+    limit: int = 20
+) -> List[User]:
+    """分页查询用户"""
+    statement = select(User).where(
+        User.is_deleted == False
+    ).offset(skip).limit(limit).order_by(User.created_at.desc())
+    return db.exec(statement).all()
+```
+
+### 3. 关联查询
+
+```python
+from sqlalchemy.orm import selectinload
+
+def get_user_with_chats(db: Session, user_id: int) -> Optional[User]:
+    """查询用户及其所有对话（避免 N+1 问题）"""
+    statement = select(User).where(
+        User.id == user_id
+    ).options(selectinload(User.chats))
+    return db.exec(statement).first()
+```
+
+### 4. 聚合查询
+
+```python
+from sqlalchemy import func
+
+def count_users(db: Session) -> int:
+    """统计用户数量"""
+    statement = select(func.count(User.id)).where(
+        User.is_deleted == False
+    )
+    return db.exec(statement).one()
+
+def get_user_stats(db: Session):
+    """获取用户统计信息"""
+    statement = select(
+        func.count(User.id).label('total'),
+        func.count(User.id).filter(User.is_active == True).label('active'),
+        func.count(User.id).filter(User.is_deleted == True).label('deleted')
+    )
+    return db.exec(statement).first()
+```
+
+### 5. 批量操作
+
+```python
+def bulk_create_users(db: Session, users_data: List[dict]):
+    """批量创建用户"""
+    users = [User(**data) for data in users_data]
+    db.add_all(users)
+    db.commit()
+
+def bulk_update_users(db: Session, user_ids: List[int], updates: dict):
+    """批量更新用户"""
+    statement = (
+        update(User)
+        .where(User.id.in_(user_ids))
+        .values(**updates)
+    )
+    db.exec(statement)
+    db.commit()
+```
+
+## 性能优化
+
+### 1. 使用索引
+
+```python
+class Message(SQLModel, table=True):
+    """消息模型，带索引优化"""
+    __tablename__ = "messages"
+    
+    id: Optional[int] = Field(primary_key=True)
+    chat_id: int = Field(foreign_key="chats.id", index=True)
+    content: str
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        index=True  # 常用于排序的字段添加索引
+    )
+```
+
+### 2. 避免 N+1 查询
+
+```python
+# ❌ 错误 - N+1 查询
+users = db.exec(select(User)).all()
+for user in users:
+    # 每次循环都会执行一次查询
+    chats = user.chats
+
+# ✅ 正确 - 使用 joinedload 或 selectinload
+from sqlalchemy.orm import selectinload
+
+statement = select(User).options(selectinload(User.chats))
+users = db.exec(statement).all()
+for user in users:
+    chats = user.chats  # 不会触发额外查询
+```
+
+### 3. 选择性加载字段
+
+```python
+def get_user_emails(db: Session) -> List[str]:
+    """只查询需要的字段"""
+    statement = select(User.email).where(User.is_deleted == False)
+    return db.exec(statement).all()
+```
+
+## 常见问题
+
+### Q: 如何处理数据库连接池?
+
+A: 在 [api/app/db/base.py](mdc:api/app/db/base.py) 中配置:
+
+```python
+from sqlmodel import create_engine
+
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=10,  # 连接池大小
+    max_overflow=20,  # 最大溢出连接
+    pool_pre_ping=True,  # 连接前检查
+    echo=False  # 生产环境关闭 SQL 日志
+)
+```
+
+### Q: 如何处理迁移冲突?
+
+A: 当多人同时修改模型时:
+1. 拉取最新代码
+2. 删除自己的迁移文件
+3. 重新运行 `alembic revision --autogenerate`
+
+### Q: 如何回滚迁移?
+
+A: 使用 `alembic downgrade -1` 回滚一个版本，或指定特定版本 ID。

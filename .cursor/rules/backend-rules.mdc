@@ -1,0 +1,592 @@
+---
+description: 后端开发规范和 FastAPI/Python 最佳实践
+---
+
+# 后端开发规范
+
+## 技术栈
+
+- **框架**: FastAPI
+- **Python 版本**: 3.12+
+- **ORM**: SQLModel
+- **数据库**: PostgreSQL
+- **缓存**: Redis
+- **包管理**: uv
+
+## 项目结构
+
+```
+api/
+├── app/
+│   ├── main.py              # FastAPI 应用入口
+│   ├── core/                # 核心配置
+│   │   ├── config.py        # 配置管理
+│   │   ├── security.py      # 安全相关
+│   │   ├── exceptions.py    # 自定义异常
+│   │   ├── i18n.py          # 国际化
+│   │   └── logging.py       # 日志配置
+│   ├── models/              # SQLModel 数据模型
+│   ├── schemas/             # Pydantic 验证模式
+│   ├── routers/v1/          # API 路由 (版本化)
+│   ├── crud/                # 数据库 CRUD 操作
+│   ├── services/            # 业务逻辑服务
+│   ├── dependencies/        # FastAPI 依赖注入
+│   │   ├── auth.py          # 认证依赖
+│   │   └── db.py            # 数据库会话依赖
+│   ├── agents/              # AI Agent 相关
+│   ├── utils/               # 工具函数
+│   └── templates/           # 邮件模板等
+├── alembic/                 # 数据库迁移
+├── pyproject.toml           # 项目依赖配置
+└── Dockerfile               # Docker 构建文件
+```
+
+## 核心文件
+
+- **应用入口**: [api/app/main.py](mdc:api/app/main.py)
+- **配置管理**: [api/app/core/config.py](mdc:api/app/core/config.py)
+- **安全模块**: [api/app/core/security.py](mdc:api/app/core/security.py)
+- **数据库依赖**: [api/app/dependencies/db.py](mdc:api/app/dependencies/db.py)
+- **认证依赖**: [api/app/dependencies/auth.py](mdc:api/app/dependencies/auth.py)
+
+## 代码规范
+
+### 1. 路由定义
+
+**路由必须使用版本化的前缀**:
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import Session
+
+from app.dependencies.db import get_db
+from app.dependencies.auth import get_current_user
+from app.schemas.user import UserResponse
+from app.models.user import User
+
+router = APIRouter(prefix="/api/v1/users", tags=["users"])
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_user_info(
+    current_user: User = Depends(get_current_user)
+) -> UserResponse:
+    """
+    获取当前登录用户信息。
+    
+    - 权限: 需要登录
+    - 响应: 用户信息对象
+    """
+    return UserResponse.model_validate(current_user)
+```
+
+**路由规范**:
+- 使用语义化的路径 (如 `/users/{user_id}`)
+- 使用正确的 HTTP 方法 (GET/POST/PUT/DELETE/PATCH)
+- 添加 `tags` 用于 API 文档分组
+- 使用 `response_model` 明确返回类型
+- 添加详细的 docstring 说明
+
+### 2. 数据模型 (SQLModel)
+
+**数据模型定义规范** (参考 [api/app/models/](mdc:api/app/models/)):
+
+```python
+from datetime import datetime
+from typing import Optional
+from sqlmodel import SQLModel, Field
+
+class User(SQLModel, table=True):
+    """
+    用户数据模型。
+    
+    业务规则:
+    - 邮箱是唯一标识符，用于登录
+    - 支持软删除 (is_deleted 字段)
+    - 密码必须加密存储
+    """
+    __tablename__ = "users"
+    
+    id: Optional[int] = Field(
+        default=None,
+        primary_key=True,
+        description="用户唯一标识符"
+    )
+    email: str = Field(
+        unique=True,
+        index=True,
+        description="用户邮箱地址，登录凭证"
+    )
+    hashed_password: str = Field(description="加密后的密码")
+    nickname: Optional[str] = Field(default=None, description="用户昵称")
+    is_active: bool = Field(default=True, description="账户是否激活")
+    is_deleted: bool = Field(default=False, description="软删除标记")
+    created_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="创建时间"
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.utcnow,
+        description="更新时间"
+    )
+```
+
+**模型规范**:
+- 使用 `Field` 添加描述和约束
+- 主键使用 `Optional[int]` + `primary_key=True`
+- 时间戳字段使用 `datetime` + `default_factory`
+- 添加索引 (`index=True`) 到常用查询字段
+- 使用 `__tablename__` 明确指定表名
+
+### 3. Pydantic Schema
+
+**Schema 用于请求/响应验证** (参考 [api/app/schemas/](mdc:api/app/schemas/)):
+
+```python
+from pydantic import BaseModel, EmailStr, Field, validator
+from typing import Optional
+from datetime import datetime
+
+class UserCreate(BaseModel):
+    """
+    用户创建请求模型。
+    
+    用于注册新用户的请求验证。
+    """
+    email: EmailStr = Field(..., description="用户邮箱")
+    password: str = Field(..., min_length=8, max_length=50, description="密码")
+    nickname: Optional[str] = Field(None, max_length=50, description="昵称")
+    
+    @validator('password')
+    def validate_password(cls, v):
+        """验证密码强度"""
+        if not any(c.isupper() for c in v):
+            raise ValueError('密码必须包含至少一个大写字母')
+        if not any(c.isdigit() for c in v):
+            raise ValueError('密码必须包含至少一个数字')
+        return v
+
+class UserResponse(BaseModel):
+    """
+    用户响应模型。
+    
+    用于返回用户信息（不包含密码等敏感信息）。
+    """
+    id: int
+    email: str
+    nickname: Optional[str]
+    is_active: bool
+    created_at: datetime
+    
+    model_config = {"from_attributes": True}
+```
+
+**Schema 规范**:
+- 使用 `EmailStr` 验证邮箱格式
+- 使用 `Field` 添加验证约束 (min_length, max_length)
+- 使用 `@validator` 进行自定义验证
+- 响应模型不包含敏感信息 (如密码)
+- 设置 `model_config = {"from_attributes": True}` 以支持 ORM 对象转换
+
+### 4. CRUD 操作
+
+**CRUD 操作应独立封装** (参考 [api/app/crud/](mdc:api/app/crud/)):
+
+```python
+from sqlmodel import Session, select
+from typing import Optional, List
+from app.models.user import User
+from app.schemas.user import UserCreate
+
+class UserCRUD:
+    """用户 CRUD 操作类"""
+    
+    @staticmethod
+    def get_by_id(db: Session, user_id: int) -> Optional[User]:
+        """
+        根据 ID 获取用户。
+        
+        - 参数:
+          - db: 数据库会话
+          - user_id: 用户 ID
+        - 返回:
+          - 用户对象，不存在则返回 None
+        """
+        return db.get(User, user_id)
+    
+    @staticmethod
+    def get_by_email(db: Session, email: str) -> Optional[User]:
+        """
+        根据邮箱获取用户。
+        
+        - 参数:
+          - db: 数据库会话
+          - email: 用户邮箱
+        - 返回:
+          - 用户对象，不存在则返回 None
+        """
+        statement = select(User).where(
+            User.email == email,
+            User.is_deleted == False
+        )
+        return db.exec(statement).first()
+    
+    @staticmethod
+    def create(db: Session, user_data: UserCreate) -> User:
+        """
+        创建新用户。
+        
+        - 参数:
+          - db: 数据库会话
+          - user_data: 用户创建数据
+        - 返回:
+          - 创建的用户对象
+        """
+        db_user = User(**user_data.model_dump())
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return db_user
+    
+    @staticmethod
+    def get_multi(
+        db: Session,
+        skip: int = 0,
+        limit: int = 100
+    ) -> List[User]:
+        """
+        分页获取用户列表。
+        
+        - 参数:
+          - db: 数据库会话
+          - skip: 跳过的记录数
+          - limit: 返回的最大记录数
+        - 返回:
+          - 用户列表
+        """
+        statement = select(User).where(
+            User.is_deleted == False
+        ).offset(skip).limit(limit)
+        return db.exec(statement).all()
+```
+
+**CRUD 规范**:
+- 使用静态方法或类方法
+- 每个方法只负责一个数据库操作
+- 软删除的模型需要过滤 `is_deleted == False`
+- 使用 `Session.get()` 进行主键查询
+- 使用 `select()` + `where()` 进行条件查询
+
+### 5. 服务层 (Business Logic)
+
+**复杂业务逻辑应在服务层处理** (参考 [api/app/services/](mdc:api/app/services/)):
+
+```python
+from sqlmodel import Session
+from fastapi import HTTPException
+from app.crud.user import UserCRUD
+from app.core.security import get_password_hash, verify_password
+from app.schemas.user import UserCreate
+
+class UserService:
+    """
+    用户服务类，处理用户相关的业务逻辑。
+    """
+    
+    @staticmethod
+    async def register_user(db: Session, user_data: UserCreate):
+        """
+        注册新用户。
+        
+        业务流程:
+        1. 检查邮箱是否已存在
+        2. 加密密码
+        3. 创建用户记录
+        4. 发送欢迎邮件
+        
+        - 参数:
+          - db: 数据库会话
+          - user_data: 用户注册数据
+        - 返回:
+          - 创建的用户对象
+        - 异常:
+          - HTTPException(400): 邮箱已存在
+        """
+        # 检查邮箱是否已存在
+        existing_user = UserCRUD.get_by_email(db, user_data.email)
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail="该邮箱已被注册"
+            )
+        
+        # 加密密码
+        hashed_password = get_password_hash(user_data.password)
+        user_data_dict = user_data.model_dump()
+        user_data_dict['hashed_password'] = hashed_password
+        del user_data_dict['password']
+        
+        # 创建用户
+        new_user = UserCRUD.create(db, user_data_dict)
+        
+        # 发送欢迎邮件 (异步)
+        # await EmailService.send_welcome_email(new_user.email)
+        
+        return new_user
+```
+
+**服务层规范**:
+- 处理复杂的业务逻辑和流程编排
+- 协调多个 CRUD 操作
+- 处理业务异常和错误
+- 调用外部服务 (邮件、支付等)
+
+### 6. 依赖注入
+
+**使用 FastAPI 的依赖注入系统** (参考 [api/app/dependencies/](mdc:api/app/dependencies/)):
+
+```python
+# api/app/dependencies/db.py
+from sqlmodel import Session
+from app.db.base import engine
+
+def get_db():
+    """
+    数据库会话依赖。
+    
+    使用生成器模式，确保会话在请求结束后自动关闭。
+    """
+    with Session(engine) as session:
+        yield session
+
+# api/app/dependencies/auth.py
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlmodel import Session
+from app.dependencies.db import get_db
+from app.core.security import verify_token
+from app.crud.user import UserCRUD
+
+security = HTTPBearer()
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    获取当前登录用户的依赖。
+    
+    - 解析 JWT Token
+    - 验证 Token 有效性
+    - 从数据库加载用户
+    
+    - 异常:
+      - HTTPException(401): Token 无效或已过期
+    """
+    token = credentials.credentials
+    payload = verify_token(token)
+    
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="无效的认证凭证"
+        )
+    
+    user_id = payload.get("user_id")
+    user = UserCRUD.get_by_id(db, user_id)
+    
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户不存在或已被禁用"
+        )
+    
+    return user
+```
+
+### 7. 异常处理
+
+**使用自定义异常和全局异常处理器** (参考 [api/app/core/exceptions.py](mdc:api/app/core/exceptions.py)):
+
+```python
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
+
+class BusinessException(Exception):
+    """业务异常基类"""
+    def __init__(self, message: str, code: str = "BUSINESS_ERROR"):
+        self.message = message
+        self.code = code
+
+class UserNotFoundError(BusinessException):
+    """用户不存在异常"""
+    def __init__(self):
+        super().__init__("用户不存在", "USER_NOT_FOUND")
+
+# 在 main.py 中注册全局异常处理器
+@app.exception_handler(BusinessException)
+async def business_exception_handler(request: Request, exc: BusinessException):
+    """处理业务异常"""
+    return JSONResponse(
+        status_code=400,
+        content={
+            "code": exc.code,
+            "message": exc.message
+        }
+    )
+```
+
+## 数据库迁移
+
+使用 Alembic 进行数据库迁移:
+
+```bash
+# 创建新迁移
+alembic revision --autogenerate -m "添加用户表"
+
+# 执行迁移
+alembic upgrade head
+
+# 回滚迁移
+alembic downgrade -1
+```
+
+## 安全规范
+
+### 1. 密码处理
+
+**必须使用 bcrypt 加密密码** (参考 [api/app/core/security.py](mdc:api/app/core/security.py)):
+
+```python
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def get_password_hash(password: str) -> str:
+    """加密密码"""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """验证密码"""
+    return pwd_context.verify(plain_password, hashed_password)
+```
+
+### 2. JWT Token
+
+**使用 JWT 进行身份验证**:
+
+```python
+from datetime import datetime, timedelta
+from jose import jwt
+from app.core.config import settings
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    """
+    创建 JWT Access Token。
+    
+    - 参数:
+      - data: 要编码的数据字典
+      - expires_delta: 过期时间增量
+    - 返回:
+      - JWT Token 字符串
+    """
+    to_encode = data.copy()
+    
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(
+        to_encode,
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM
+    )
+    return encoded_jwt
+```
+
+## 性能优化
+
+### 1. 数据库查询优化
+
+```python
+# 使用 joinedload 避免 N+1 查询
+from sqlmodel import select
+from sqlalchemy.orm import selectinload
+
+statement = select(User).options(
+    selectinload(User.chats)
+)
+users = db.exec(statement).all()
+```
+
+### 2. 缓存
+
+```python
+from redis import Redis
+import json
+
+redis_client = Redis(host='localhost', port=6379, db=0)
+
+def get_cached_user(user_id: int):
+    """从 Redis 获取缓存的用户数据"""
+    cache_key = f"user:{user_id}"
+    cached = redis_client.get(cache_key)
+    
+    if cached:
+        return json.loads(cached)
+    
+    # 从数据库查询
+    user = UserCRUD.get_by_id(db, user_id)
+    
+    # 缓存 1 小时
+    redis_client.setex(
+        cache_key,
+        3600,
+        json.dumps(user.model_dump())
+    )
+    
+    return user
+```
+
+## 日志规范
+
+使用结构化日志 (参考 [api/app/core/logging.py](mdc:api/app/core/logging.py)):
+
+```python
+import logging
+
+logger = logging.getLogger(__name__)
+
+# 记录关键操作
+logger.info(f"用户 {user.id} 登录成功", extra={
+    "user_id": user.id,
+    "email": user.email,
+    "ip": request.client.host
+})
+
+# 记录错误
+logger.error(f"创建用户失败: {str(e)}", extra={
+    "email": user_data.email,
+    "error": str(e)
+}, exc_info=True)
+```
+
+## 测试规范
+
+```python
+import pytest
+from fastapi.testclient import TestClient
+from app.main import app
+
+client = TestClient(app)
+
+def test_create_user():
+    """测试创建用户"""
+    response = client.post("/api/v1/users", json={
+        "email": "test@example.com",
+        "password": "Test1234"
+    })
+    assert response.status_code == 201
+    assert response.json()["email"] == "test@example.com"
+```

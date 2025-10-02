@@ -1,0 +1,536 @@
+---
+description: 国际化和样式开发规范和 Tailwind CSS/Shadcn UI 最佳实践
+---
+
+# 国际化和样式开发规范
+
+## 国际化 (i18n)
+
+本项目使用 `next-intl` 进行国际化，支持中文 (zh) 和英文 (en)。
+
+### 核心文件
+
+- **翻译文件**: 
+  - [web/app/messages/zh.json](mdc:web/app/messages/zh.json)
+  - [web/app/messages/en.json](mdc:web/app/messages/en.json)
+- **路由配置**: [web/i18n/routing.ts](mdc:web/i18n/routing.ts)
+- **请求配置**: [web/i18n/request.ts](mdc:web/i18n/request.ts)
+- **导航配置**: [web/i18n/navigation.ts](mdc:web/i18n/navigation.ts)
+- **中间件**: [web/middleware.ts](mdc:web/middleware.ts)
+
+### 1. 翻译文件结构
+
+翻译文件使用嵌套的 JSON 结构:
+
+```json
+{
+  "common": {
+    "save": "保存",
+    "cancel": "取消",
+    "delete": "删除",
+    "edit": "编辑",
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功"
+  },
+  "auth": {
+    "login": "登录",
+    "logout": "退出登录",
+    "register": "注册",
+    "email": "邮箱",
+    "password": "密码",
+    "forgotPassword": "忘记密码？"
+  },
+  "chat": {
+    "title": "对话",
+    "newChat": "新建对话",
+    "inputPlaceholder": "输入消息...",
+    "send": "发送",
+    "emptyState": "开始新对话"
+  },
+  "admin": {
+    "users": {
+      "title": "用户管理",
+      "list": "用户列表",
+      "create": "创建用户",
+      "edit": "编辑用户"
+    },
+    "agents": {
+      "title": "Agent 管理",
+      "list": "Agent 列表"
+    }
+  }
+}
+```
+
+**翻译文件规范**:
+- 使用语义化的命名空间 (common, auth, chat, admin)
+- 使用 camelCase 命名键
+- 保持中英文文件结构一致
+- 不要在翻译中硬编码 URL 或数据
+
+### 2. 在组件中使用翻译
+
+```typescript
+import { useTranslations } from 'next-intl'
+
+export default function LoginPage() {
+  const t = useTranslations('auth')
+  
+  return (
+    <div>
+      <h1>{t('login')}</h1>
+      <form>
+        <input placeholder={t('email')} />
+        <input placeholder={t('password')} />
+        <button>{t('login')}</button>
+      </form>
+    </div>
+  )
+}
+```
+
+**使用规范**:
+- 通过 `useTranslations('namespace')` 获取翻译函数
+- 使用 `t('key')` 获取翻译文本
+- 支持参数: `t('welcome', { name: 'John' })`
+- 支持复数: `t('items', { count: 5 })`
+
+### 3. 带参数的翻译
+
+```json
+{
+  "welcome": "欢迎, {name}!",
+  "itemCount": "你有 {count} 个项目"
+}
+```
+
+```typescript
+const t = useTranslations('common')
+
+// 使用
+t('welcome', { name: userName })
+t('itemCount', { count: items.length })
+```
+
+### 4. 复数形式
+
+```json
+{
+  "messages": {
+    "one": "1 条消息",
+    "other": "{count} 条消息"
+  }
+}
+```
+
+```typescript
+t('messages', { count: messageCount })
+```
+
+### 5. 语言切换
+
+使用 [web/components/language-switch-button.tsx](mdc:web/components/language-switch-button.tsx):
+
+```typescript
+'use client'
+
+import { useLocale } from 'next-intl'
+import { usePathname, useRouter } from '@/i18n/navigation'
+
+export function LanguageSwitchButton() {
+  const locale = useLocale()
+  const router = useRouter()
+  const pathname = usePathname()
+  
+  const switchLanguage = (newLocale: string) => {
+    router.push(pathname, { locale: newLocale })
+  }
+  
+  return (
+    <button onClick={() => switchLanguage(locale === 'zh' ? 'en' : 'zh')}>
+      {locale === 'zh' ? 'English' : '中文'}
+    </button>
+  )
+}
+```
+
+### 6. 服务端组件中的翻译
+
+```typescript
+import { getTranslations } from 'next-intl/server'
+
+export default async function ServerComponent() {
+  const t = await getTranslations('common')
+  
+  return <h1>{t('title')}</h1>
+}
+```
+
+### 7. API 路由语言设置
+
+参考 `api-route-language-rules` 规则，在调用后端 API 时应传递语言参数:
+
+```typescript
+// 在 fetcher 中添加语言头
+const response = await fetch('/api/v1/users', {
+  headers: {
+    'Accept-Language': locale // 'zh' 或 'en'
+  }
+})
+```
+
+## 样式开发 (Tailwind CSS + Shadcn UI)
+
+### 技术栈
+
+- **CSS 框架**: Tailwind CSS
+- **组件库**: Shadcn UI
+- **主题系统**: CSS Variables + Tailwind
+
+### 1. Tailwind CSS 使用规范
+
+**基本用法**:
+
+```tsx
+// 布局
+<div className="flex items-center justify-between p-4 gap-2">
+  
+// 响应式
+<div className="w-full md:w-1/2 lg:w-1/3">
+  
+// 状态
+<button className="bg-blue-500 hover:bg-blue-600 disabled:opacity-50">
+  
+// Dark Mode
+<div className="bg-white dark:bg-gray-900 text-black dark:text-white">
+```
+
+**常用类名**:
+
+```tsx
+// 间距
+p-4      // padding: 1rem
+px-6     // padding-left/right: 1.5rem
+mt-2     // margin-top: 0.5rem
+gap-4    // gap: 1rem
+
+// 尺寸
+w-full   // width: 100%
+h-screen // height: 100vh
+max-w-lg // max-width: 32rem
+
+// Flexbox
+flex flex-col items-center justify-between
+
+// Grid
+grid grid-cols-3 gap-4
+
+// 文本
+text-sm text-center font-bold text-gray-700
+
+// 边框
+border border-gray-200 rounded-lg
+
+// 阴影
+shadow-sm shadow-md shadow-lg
+```
+
+**不要使用行内样式**:
+
+```tsx
+// ❌ 错误
+<div style={{ padding: '16px', color: 'red' }}>
+
+// ✅ 正确
+<div className="p-4 text-red-500">
+```
+
+### 2. Shadcn UI 组件使用
+
+Shadcn UI 组件位于 [web/components/ui/](mdc:web/components/ui/)。
+
+**常用组件**:
+
+```tsx
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
+
+// 按钮
+<Button variant="default" size="lg">点击</Button>
+<Button variant="outline">取消</Button>
+<Button variant="ghost">链接</Button>
+<Button variant="destructive">删除</Button>
+
+// 输入框
+<Input type="email" placeholder="输入邮箱" />
+
+// 对话框
+<Dialog open={isOpen} onOpenChange={setIsOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>标题</DialogTitle>
+    </DialogHeader>
+    <div>内容</div>
+  </DialogContent>
+</Dialog>
+
+// 卡片
+<Card>
+  <CardHeader>
+    <CardTitle>标题</CardTitle>
+  </CardHeader>
+  <CardContent>
+    内容
+  </CardContent>
+</Card>
+```
+
+**添加新组件**:
+
+```bash
+cd web
+pnpm dlx shadcn-ui@latest add [component-name]
+```
+
+### 3. 主题系统
+
+主题配置在 [web/app/globals.css](mdc:web/app/globals.css) 中使用 CSS Variables:
+
+```css
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    /* ... 更多颜色变量 */
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    /* ... 更多颜色变量 */
+  }
+}
+```
+
+**在组件中使用主题颜色**:
+
+```tsx
+// 使用语义化的颜色类名
+<div className="bg-background text-foreground">
+<button className="bg-primary text-primary-foreground">
+<div className="border-border bg-card">
+```
+
+### 4. Dark Mode 切换
+
+使用 [web/components/theme-toggle-button.tsx](mdc:web/components/theme-toggle-button.tsx):
+
+```tsx
+'use client'
+
+import { useTheme } from 'next-themes'
+import { Button } from '@/components/ui/button'
+
+export function ThemeToggleButton() {
+  const { theme, setTheme } = useTheme()
+  
+  return (
+    <Button
+      variant="ghost"
+      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+    >
+      {theme === 'dark' ? '🌞' : '🌙'}
+    </Button>
+  )
+}
+```
+
+### 5. 响应式设计
+
+**断点**:
+- `sm`: 640px
+- `md`: 768px
+- `lg`: 1024px
+- `xl`: 1280px
+- `2xl`: 1536px
+
+**使用示例**:
+
+```tsx
+<div className="
+  w-full           // 移动端: 全宽
+  md:w-1/2         // 平板: 50%
+  lg:w-1/3         // 桌面: 33%
+  p-4 md:p-6 lg:p-8  // 响应式间距
+">
+  <h1 className="text-lg md:text-xl lg:text-2xl">
+    响应式标题
+  </h1>
+</div>
+```
+
+### 6. 移动端适配
+
+使用 [web/hooks/use-mobile.ts](mdc:web/hooks/use-mobile.ts) 检测移动端:
+
+```tsx
+import { useMobile } from '@/hooks/use-mobile'
+
+export function MyComponent() {
+  const isMobile = useMobile()
+  
+  return (
+    <div className={isMobile ? 'p-2' : 'p-6'}>
+      {isMobile ? <MobileView /> : <DesktopView />}
+    </div>
+  )
+}
+```
+
+### 7. 动画
+
+使用 Tailwind 内置的过渡动画:
+
+```tsx
+// 过渡
+<div className="transition-all duration-300 ease-in-out">
+
+// Hover 效果
+<button className="transform hover:scale-105 transition">
+
+// 淡入淡出
+<div className="animate-in fade-in duration-500">
+```
+
+### 8. 布局组件规范
+
+**容器布局**:
+
+```tsx
+// 页面容器
+<div className="container mx-auto px-4 py-8 max-w-7xl">
+
+// 卡片网格
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+// Flex 布局
+<div className="flex flex-col md:flex-row items-start md:items-center gap-4">
+```
+
+### 9. 表单样式
+
+```tsx
+<form className="space-y-4">
+  <div className="space-y-2">
+    <label className="text-sm font-medium">
+      邮箱
+    </label>
+    <Input 
+      type="email" 
+      placeholder="user@example.com"
+      className="w-full"
+    />
+  </div>
+  
+  <div className="flex justify-end gap-2">
+    <Button variant="outline" type="button">
+      取消
+    </Button>
+    <Button type="submit">
+      提交
+    </Button>
+  </div>
+</form>
+```
+
+### 10. 加载状态
+
+```tsx
+import { Loader2 } from 'lucide-react'
+
+<Button disabled={isLoading}>
+  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+  {isLoading ? '加载中...' : '提交'}
+</Button>
+```
+
+## 最佳实践
+
+### 1. 组件结构
+
+```tsx
+import { useTranslations } from 'next-intl'
+import { Button } from '@/components/ui/button'
+
+export default function MyComponent() {
+  const t = useTranslations('namespace')
+  
+  return (
+    <div className="container mx-auto p-4">
+      <h1 className="text-2xl font-bold mb-4">
+        {t('title')}
+      </h1>
+      
+      <div className="space-y-4">
+        {/* 内容 */}
+      </div>
+    </div>
+  )
+}
+```
+
+### 2. 可复用的样式
+
+创建自定义 Tailwind 类:
+
+```css
+/* globals.css */
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md;
+  }
+  
+  .card-container {
+    @apply bg-card border border-border rounded-lg shadow-sm;
+  }
+}
+```
+
+### 3. 颜色使用规范
+
+**使用语义化颜色变量，不要使用硬编码的颜色**:
+
+```tsx
+// ✅ 正确 - 使用语义化颜色
+<div className="bg-background text-foreground">
+<div className="bg-primary text-primary-foreground">
+<div className="bg-destructive text-destructive-foreground">
+
+// ❌ 错误 - 硬编码颜色
+<div className="bg-blue-500 text-white">
+<div className="bg-red-600">
+```
+
+### 4. 国际化 + 样式结合
+
+```tsx
+const t = useTranslations('common')
+
+return (
+  <div className="bg-card p-6 rounded-lg">
+    <h2 className="text-xl font-semibold mb-2">
+      {t('title')}
+    </h2>
+    <p className="text-muted-foreground">
+      {t('description')}
+    </p>
+  </div>
+)
+```
