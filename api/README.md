@@ -1,132 +1,167 @@
 # Remove AI Flavor API
 
-Remove AI Flavor API is the core component of Remove AI Flavor, responsible for handling all the API requests and responses.
+The API is a FastAPI service for authentication, text optimization, chat history, membership limits, payments, and administration. Model execution is centralized in an Agno adapter backed by an OpenAI-compatible endpoint and the bundled `stop-slop` Skill.
 
-## Project Structure
+## Requirements
+
+- Python `>=3.12,<3.14`
+- uv
+- PostgreSQL
+- Redis
+
+## Setup
+
+From the `api` directory:
 
 ```bash
-/
-├── app/
-│   ├── main.py               # FastAPI instance creation and route registration entry point
-│   ├── routers/              # Route related code
-│   │   ├── v1/               # API versioning
-│   │   │   ├── auth.py
-│   │   │   ├── chat.py
-│   ├── core/                 # Core configuration, startup settings, etc.
-│   │   ├── config.py         # Environment variables and configuration file loading
-│   │   ├── security.py       # Security related logic, e.g., password encryption, JWT
-│   ├── models/               # Data models, typically SQLAlchemy models
-│   │   ├── user.py
-│   ├── schemas/              # Pydantic models (request and response validation)
-│   │   ├── user.py
-│   │   ├── chat.py
-│   │   ├── message.py
-│   ├── crud/                 # Database operations encapsulation (Create, Read, Update, Delete)
-│   │   ├── user.py
-│   │   ├── chat.py
-│   │   ├── message.py
-│   ├── services/             # Business logic modules
-│   │   ├── user_service.py
-│   │   ├── email_service.py
-│   ├── db/                   # Database initialization and session management
-│   │   ├── base.py           # Base class definition
-│   ├── dependencies/         # FastAPI Depends related logic
-│   │   ├── db.py
-│   ├── util/                # Utility functions
-│   │   ├── db.py
-│   ├── templates/           # Email templates
-├── alembic/                  # Database migration directory (if using Alembic)
-├── scripts/                  # Scripts directory
-├── .env.example            # Environment variables file
-├── pyproject.toml           # Project configuration file
-├── uv.lock                  # Dependency lock file
-├── README.md
+uv sync
+cp .env.example .env
 ```
 
-## Get Started
-
-> ⚠️ Requirements:
->
-> - Python: >= 3.10 (3.12.10 recommended)
-> - uv: >= 0.6 (0.6.16 recommended)
-
-### Install database with Docker
+Start local PostgreSQL and Redis when needed:
 
 ```bash
-cd ./api
-
 bash scripts/run_postgres.sh
 bash scripts/run_redis.sh
 ```
 
-### Configuration
+Apply migrations and start the API:
 
 ```bash
-cp .env.example .env
-# Edit .env file
+uv run alembic upgrade head
+uv run python -m app.main
 ```
 
-### Email Service Configuration
+- API: <http://localhost:8000>
+- OpenAPI: <http://localhost:8000/api/v1/docs>
+- ReDoc: <http://localhost:8000/api/v1/redoc>
+- Health: <http://localhost:8000/health>
 
-The system supports two email sending methods: `SMTP` and `Resend`. You can configure this via the `MAIL_SEND_METHOD` environment variable.
+The application creates missing tables and seeds the default Agent and membership plans during startup. Alembic remains required for existing-database schema changes.
 
-- **`MAIL_SEND_METHOD=SMTP`**: Uses traditional SMTP servers for sending emails. You need to configure the following variables:
-  - `MAIL_USERNAME`: SMTP username
-  - `MAIL_PASSWORD`: SMTP password
-  - `MAIL_FROM`: Sender's email address
-  - `MAIL_PORT`: SMTP server port
-  - `MAIL_SERVER`: SMTP server address
+## Configuration
 
-- **`MAIL_SEND_METHOD=RESEND`**: Uses the Resend service for sending emails. This is useful when the cloud provider disables SMTP. You need to configure the following variables:
-  - `RESEND_API_KEY`: Your Resend API Key
-  - `RESEND_MAIL_FROM`: The sender's email address registered with Resend
+Copy `.env.example` and replace all sample credentials. Important groups are:
 
-### Local Development
+- `AUTH_*`: JWT lifetime, signing secret, and local debug-code login.
+- `POSTGRES_*`: database connection and pool settings.
+- `REDIS_*`: cache connection and guest usage storage.
+- `MAIL_*` / `RESEND_*`: email verification delivery.
+- `AGENT_*`: default Agent source label, API endpoint, model, and temperature.
+- `STRIPE_*`: checkout and webhook credentials.
+- `MEMBERSHIP_*`: default plans and usage limits.
 
-use [uv](https://docs.astral.sh/uv/getting-started/installation/) to install the dependencies.
+Minimal AI configuration:
+
+```dotenv
+AGENT_SOURCE=llm
+AGENT_API_KEY=sk-...
+AGENT_BASE_URL=https://api.openai.com/v1/chat/completions
+AGENT_MODEL_NAME=gpt-4.1-mini
+AGENT_MODEL_TEMPERATURE=0.7
+```
+
+`AGENT_SOURCE` is metadata for display and URL presets. All source values execute through `app/agents/agno.py`. The API URL may be a base URL or a full Chat Completions URL.
+
+## Runtime design
+
+### Agent execution
+
+- `app/agents/agno.py` validates Agent configuration and creates an Agno `OpenAILike` model.
+- `app/skills/stop-slop/` is loaded and validated at runtime.
+- Skill instructions and references are injected directly so OpenAI-compatible providers do not need tool-call support.
+- Only the latest user text is rewritten; the optimization itself is stateless.
+- Streaming chat captures partial output and final token usage.
+
+### Access control
+
+- Guest optimization accepts a browser-generated UUID in `X-Guest-ID`.
+- Guests receive three successful uses per 30-day Redis window and can only use free Agents.
+- Logged-in users can access Agents at or below their membership tier.
+- Public Agent schemas exclude API keys.
+- Membership services enforce daily messages, daily tokens, and conversation-turn limits.
+
+### Storage
+
+- PostgreSQL stores users, memberships, Agents, chats, messages, usage, and orders.
+- Redis stores verification data and guest optimization counters.
+- Guest counter updates use Lua scripts to make reserve, commit, and release operations atomic.
+
+## Main endpoints
+
+All versioned routes use the `/api/v1` prefix.
+
+- `POST /text-optimizer/guest-optimize`: guest optimization; requires `X-Guest-ID`.
+- `POST /text-optimizer/optimize`: authenticated non-streaming optimization.
+- `POST /chat`: create an authenticated chat.
+- `POST /chat/message?stream=true`: generate and persist a streaming response.
+- `GET /chat/agents/active`: list Agents available to the current membership.
+- `/auth`, `/user`, `/membership`, `/orders`, and `/admin`: account and administration APIs.
+
+Use OpenAPI as the source of truth for request and response schemas.
+
+## Project layout
+
+```text
+api/
+├── alembic/                # Alembic environment and revisions
+├── app/
+│   ├── agents/             # Agno model adapter
+│   ├── core/               # Configuration, logging, i18n, exceptions
+│   ├── crud/               # Database access
+│   ├── db/                 # Engine, sessions, startup seeds
+│   ├── dependencies/       # FastAPI dependencies
+│   ├── models/             # SQLModel tables
+│   ├── routers/v1/         # Versioned routes
+│   ├── schemas/            # Pydantic schemas
+│   ├── services/           # Membership, guest usage, email
+│   ├── skills/stop-slop/   # Bundled writing Skill
+│   └── templates/          # Email templates
+├── scripts/                # Local dependency helpers
+├── tests/                  # pytest suite
+└── pyproject.toml
+```
+
+## Development
+
+Run tests and formatting checks:
 
 ```bash
-uv sync
-
-# activate virtual environment
-source .venv/bin/activate
-
-# run in dev mode in port 8000
-python -m app.main
+make test
+make lint
 ```
 
-### Run with Docker
+Format imports and Python code:
 
 ```bash
-docker build -t remove-ai-flavor-api:0.1.0 .
-
-cp .env.example .env
-# Edit .env file
-
-docker run -d --name remove-ai-flavor-api \
-    -p 8000:8000 \
-    -v $(pwd)/.env:/app/.env \
-    remove-ai-flavor-api:0.1.0
+make format
 ```
 
-## Stripe Test
+Create and apply a migration:
 
-### Most commonly used test card numbers
+```bash
+uv run alembic revision --autogenerate -m "describe the change"
+uv run alembic upgrade head
+```
 
-• `4242 4242 4242 4242` → Any future expiry date + any CVC + any billing address (always succeeds)
+Migration revisions must be reviewed before commit. Do not edit an already-deployed revision unless the change is explicitly a repair for an unreleased migration.
 
-### Different scenario testing card numbers
+## Stripe testing
 
-• `4000 0000 0000 0002` → 一般拒绝
-• `4242 4242 4242 4241` → 错误卡号拒付
-• `4000 0000 0000 4954` → 最高风险
-
-[more card numbers](https://docs.stripe.com/testing#use-test-cards)
-
-### Test Webhook
+Forward local webhooks:
 
 ```bash
 stripe login
-
 stripe listen --forward-to localhost:8000/api/v1/orders/stripe/webhook
 ```
+
+Use Stripe's official [test card documentation](https://docs.stripe.com/testing#use-test-cards). Never use live credentials in local development.
+
+## Docker
+
+```bash
+docker build -t remove-ai-flavor-api:local .
+docker run --rm -p 8000:8000 --env-file .env remove-ai-flavor-api:local
+```
+
+For the complete stack, use [`../deploy/README.md`](../deploy/README.md).

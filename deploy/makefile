@@ -87,5 +87,32 @@ rebuild: stop build-all start logs
 
 deploy: build-all restart
 
+# 供 CI 使用的无交互部署流程：构建镜像、执行迁移并等待服务健康。
+deploy-ci:
+	@echo "Building images for CI deployment..."
+	@$(MAKE) build-all
+	@$(MAKE) stop
+	@echo "Starting PostgreSQL and Redis..."
+	docker compose up -d --wait --wait-timeout 120 postgres redis
+	@echo "Applying database migrations..."
+	docker compose run --rm --no-deps --entrypoint alembic api upgrade head || { \
+		echo "Database migration failed; collecting diagnostics..."; \
+		docker compose ps || true; \
+		docker compose logs --tail=200 postgres || true; \
+		exit 1; \
+	}
+	@echo "Starting application services and waiting for health checks..."
+	docker compose up -d --wait --wait-timeout 180 || { \
+		echo "Deployment failed; collecting diagnostics..."; \
+		docker compose ps || true; \
+		docker compose logs --tail=200 api nginx || true; \
+		exit 1; \
+	}
+	docker compose exec -T api wget -qO- http://127.0.0.1:8000/health
+	docker compose ps
+	@echo "Pruning dangling images and build cache..."
+	docker image prune -f || true
+	docker builder prune -f || true
+
 # Phony targets
-.PHONY: build-web build-api push-web push-api build-all push-all build-push-all build-push-web start stop logs restart rebuild deploy
+.PHONY: build-web build-api push-web push-api build-all push-all build-push-all build-push-web start stop logs restart rebuild deploy deploy-ci

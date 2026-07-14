@@ -1,212 +1,54 @@
 ---
-description: 部署和运维规范，包含 Docker、CI/CD 和监控最佳实践
+description: Docker Compose、数据库迁移和生产部署规范
 ---
 
-# 部署和运维规范
+# 部署与运维
 
-## Docker 部署
+## 真实入口
 
-### 核心文件
+- 完整部署位于 `deploy/`，没有独立 `deploy-test/` 目录。
+- 测试环境通过 `deploy/.env.test.example` 和后缀变量隔离。
+- 根 Makefile 将常规部署命令转发到 `deploy/makefile`，并提供 `deploy-ci` 自动部署入口。
+- 对外入口默认是 Nginx `8081`；Web 容器为 `3000`，API 容器为 `8000`。
 
-- **生产环境**: [deploy/docker-compose.yaml](mdc:deploy/docker-compose.yaml)
-- **测试环境**: [deploy-test/docker-compose.yaml](mdc:deploy-test/docker-compose.yaml)
-- **后端 Dockerfile**: [api/Dockerfile](mdc:api/Dockerfile)
-- **前端 Dockerfile**: [web/Dockerfile](mdc:web/Dockerfile)
-
-### 1. Docker Compose 使用
-
-```bash
-# 进入部署目录
-cd deploy  # 生产环境
-cd deploy-test  # 测试环境
-
-# 启动所有服务
-make up
-
-# 停止所有服务
-make down
-
-# 查看日志
-make logs
-
-# 重新构建并启动
-make rebuild
-
-# 查看服务状态
-docker-compose ps
-```
-
-### 2. 环境配置
-
-**生产环境 `.env` 文件**:
-
-```bash
-# 数据库
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=strong_password
-POSTGRES_DB=app_db
-
-# Redis
-REDIS_PASSWORD=redis_password
-
-# 后端
-SECRET_KEY=your-secret-key
-DATABASE_URL=postgresql://user:pass@postgres:5432/db
-REDIS_URL=redis://:password@redis:6379/0
-
-# AI
-AGENT_API_KEY=sk-xxxxx
-
-# 邮件
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-
-# 前端
-NEXT_PUBLIC_API_URL=https://api.yourdomain.com
-```
-
-### 3. 健康检查
-
-```yaml
-# docker-compose.yaml
-services:
-  api:
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-```
-
-## 数据库管理
-
-### 1. 迁移
-
-```bash
-# 在容器中执行迁移
-docker-compose exec api alembic upgrade head
-
-# 创建新迁移
-docker-compose exec api alembic revision --autogenerate -m "description"
-```
-
-### 2. 备份和恢复
-
-```bash
-# 备份数据库
-docker-compose exec postgres pg_dump -U postgres app_db > backup.sql
-
-# 恢复数据库
-docker-compose exec -T postgres psql -U postgres app_db < backup.sql
-```
-
-## 监控和日志
-
-### 1. 日志查看
-
-```bash
-# 查看所有服务日志
-docker-compose logs -f
-
-# 查看特定服务日志
-docker-compose logs -f api
-docker-compose logs -f web
-
-# 查看最近 100 行
-docker-compose logs --tail=100 api
-```
-
-### 2. 应用监控
-
-- 使用结构化日志
-- 记录关键操作和错误
-- 监控 API 响应时间
-- 监控数据库连接池
-
-## 性能优化
-
-### 1. 后端优化
-
-- 使用数据库连接池
-- 实现 Redis 缓存
-- 优化数据库查询 (添加索引)
-- 使用异步处理长时间任务
-
-### 2. 前端优化
-
-- 使用 Next.js 静态生成 (SSG)
-- 实现代码分割
-- 图片优化 (Next.js Image)
-- 使用 CDN
-
-## 安全规范
-
-### 1. 生产环境检查清单
-
-- [ ] 使用强密码
-- [ ] 配置 HTTPS
-- [ ] 限制数据库访问
-- [ ] 启用防火墙
-- [ ] 定期更新依赖
-- [ ] 配置日志轮转
-- [ ] 实现速率限制
-- [ ] 定期备份数据
-
-### 2. 密钥管理
-
-- 不要在代码中硬编码密钥
-- 使用环境变量
-- 定期轮换密钥
-- 使用密钥管理服务 (如 AWS Secrets Manager)
-
-## CI/CD
-
-### GitHub Actions 示例
-
-```yaml
-name: Deploy
-
-on:
-  push:
-    branches: [main]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      
-      - name: Build and push Docker images
-        run: |
-          docker-compose build
-          docker-compose push
-      
-      - name: Deploy to server
-        run: |
-          ssh user@server 'cd /app && docker-compose pull && docker-compose up -d'
-```
-
-## 常见问题
-
-### Q: 如何更新生产环境?
+## 命令
 
 ```bash
 cd deploy
-git pull
-docker-compose pull
-docker-compose up -d
+cp .env.example .env
+make build-all
+make start
+make logs
+make stop
+make deploy-ci
 ```
 
-### Q: 如何查看服务资源使用?
+使用 `docker compose`，不写旧式 `docker-compose`。实际目标名是 `start` 和 `stop`，不是 `up` 和 `down`。
+
+## 配置
+
+- 使用 `AUTH_SECRET_KEY`，不使用 `SECRET_KEY`。
+- 数据库使用拆分的 `POSTGRES_*`，不使用 `DATABASE_URL`。
+- 邮件使用 `MAIL_*` 或 `RESEND_*`。
+- 模型使用 `AGENT_API_KEY`、`AGENT_BASE_URL` 和 `AGENT_MODEL_NAME`。
+- 不提交 `.env`，生产配置不得保留示例密码或开启调试。
+
+## 迁移与健康检查
 
 ```bash
-docker stats
+docker compose exec api alembic upgrade head
+docker compose exec api wget -qO- http://127.0.0.1:8000/health
+docker compose ps
 ```
 
-### Q: 如何清理未使用的 Docker 资源?
+应用启动时的 `create_all` 不能替代 Alembic。升级前备份 PostgreSQL，并在测试环境验证迁移和回滚。
 
-```bash
-docker system prune -a
-```
+GitHub Actions 通过 `.github/workflows/deploy.yml` 使用 SSH 运行 `make deploy-ci`。必须校验 `known_hosts`，私钥只放在 Actions Secrets 中。
+
+## 安全
+
+- 生产环境设置 `AUTH_IS_DEBUG=False`、`API_RELOAD=False`。
+- 使用 HTTPS，限制 PostgreSQL 与 Redis 的公网端口。
+- 对 `.env`、备份和 `volumes/` 设置最小文件权限。
+- 日志不得包含密钥、用户原文或上游响应正文。
+- 轮换 JWT、模型、邮件和 Stripe 凭据，并建立数据库恢复演练。

@@ -54,8 +54,11 @@ web/
 
 - **根布局**: [web/app/[locale]/layout.tsx](mdc:web/app/[locale]/layout.tsx)
 - **首页**: [web/app/[locale]/page.tsx](mdc:web/app/[locale]/page.tsx)
-- **聊天组件**: [web/components/web/pages/chat-content-page.tsx](mdc:web/components/web/pages/chat-content-page.tsx)
+- **优化编辑器**: [web/components/web/editor/remove-flavor-editor.tsx](mdc:web/components/web/editor/remove-flavor-editor.tsx)
+- **登录聊天组件**: [web/components/web/pages/chat-content-page.tsx](mdc:web/components/web/pages/chat-content-page.tsx)
 - **共享布局**: [web/components/web/layout/shared-layout.tsx](mdc:web/components/web/layout/shared-layout.tsx)
+- **访客额度**: [web/util/guest-usage.ts](mdc:web/util/guest-usage.ts)
+- **优化任务**: [web/util/optimization-task.ts](mdc:web/util/optimization-task.ts)
 
 ## 组件开发规范
 

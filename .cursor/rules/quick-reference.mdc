@@ -1,98 +1,54 @@
 ---
 alwaysApply: true
-description: Build AI Template 快速参考指南和常用命令
+description: Remove AI Flavor 关键文件和常用命令
 ---
 
-# Build AI Template - 快速参考指南
+# 快速参考
 
-## 项目快速导航
+## 关键文件
 
-- **后端入口**: `api/app/main.py`
-- **前端入口**: `web/app/[locale]/page.tsx`
-- **聊天组件**: `web/components/web/pages/chat-content-page.tsx`
-- **LLM 工具**: `api/app/agents/llm.py`
+- API 入口：`api/app/main.py`
+- Agno 适配：`api/app/agents/agno.py`
+- 文本优化：`api/app/routers/v1/text_optimizer.py`
+- 对话流：`api/app/routers/v1/chat.py`
+- 访客额度：`api/app/services/guest_usage_service.py`
+- 默认数据：`api/app/db/base.py`
+- Web 入口：`web/app/[locale]/page.tsx`
+- 优化编辑器：`web/components/web/editor/remove-flavor-editor.tsx`
+- 侧边栏：`web/components/web/sidebar/app-sidebar.tsx`
+- 翻译：`web/app/messages/{zh,en}.json`
 
-### 常用目录
-
-```bash
-api/app/
-├── models/       # SQLModel 数据模型
-├── schemas/      # Pydantic 验证模式
-├── routers/v1/   # API v1 路由
-├── crud/         # 数据库 CRUD 操作
-└── services/     # 业务逻辑服务
-
-web/
-├── app/[locale]/     # 页面路由
-├── components/       # React 组件
-│   ├── admin/        # 后台管理 (pages, dialogs, components, sidebar)
-│   ├── web/          # 前台应用 (pages, dialogs, chat, editor, layout, sidebar)
-│   ├── common/       # 共享组件
-│   └── ui/           # Shadcn UI 组件
-└── app/messages/     # 国际化翻译
-```
-
-## 开发工作流程
-
-1. **后端优先**: 在 `api/app/` 中添加模型、路由、服务。
-2. **数据库迁移**: 运行 `alembic revision --autogenerate` 和 `alembic upgrade head`。
-3. **前端实现**: 在 `web/components/` 中创建组件。
-4. **国际化**: 添加翻译到 `web/app/messages/`。
-5. **测试验证**: 确保功能正常。
-
-## 常用开发命令
-
-### 后端 (`/api`)
+## 命令
 
 ```bash
-# 安装/同步依赖
+# 根目录开发
+make dev-api
+make dev-web
+make deploy-ci
+pnpm lint:md
+
+# 后端
+cd api
 uv sync
+uv run alembic upgrade head
+make test
+make lint
 
-# 运行开发服务器
-uv run python -m app.main
-
-# 创建数据库迁移
-alembic revision --autogenerate -m "描述"
-
-# 执行迁移
-alembic upgrade head
-```
-
-### 前端 (`/web`)
-
-```bash
-# 安装依赖
+# 前端
+cd ../web
 pnpm install
-
-# 运行开发服务器
-pnpm dev
-
-# 构建生产版本
+pnpm test
 pnpm build
+make i18n-check
 
-# 添加 Shadcn UI 组件
-pnpm dlx shadcn-ui@latest add [component-name]
-```
-
-### 部署 (`/deploy` 或 `/deploy-test`)
-
-```bash
-# 启动服务
-make up
-
-# 停止服务
-make down
-
-# 查看日志
+# 部署
+cd ../deploy
+make build-all
+make start
 make logs
-
-# 完全重建
-make rebuild
+make stop
 ```
 
-## 常见问题快速排查
+Web 开发端口为 `3009`，API 为 `8000`，OpenAPI 为 `/api/v1/docs`，健康检查为 `/health`。
 
-- **数据库迁移失败**: 检查 `DATABASE_URL` 配置是否正确。
-- **API 认证失败**: 确认 `.env` 文件中的 `SECRET_KEY` 和 JWT 配置正确。
-- **前端翻译缺失**: 确保 `web/app/messages/` 中的 `zh.json` 和 `en.json` 包含对应的翻译键。
-- **AI 调用失败**: 检查 `.env` 文件中的 `AGENT_API_KEY` 是否配置正确。
+排错时检查 `POSTGRES_*`、`REDIS_*`、`AUTH_SECRET_KEY` 和 `AGENT_*`；项目不使用 `DATABASE_URL`、`SECRET_KEY`、`llm.py` 或 `dify.py`。

@@ -1,320 +1,43 @@
 ---
-description: AI 和 Agent 开发规范和 OpenAI API 集成最佳实践
+description: Agno、OpenAI-compatible 模型与 stop-slop Skill 开发规范
 ---
 
-# AI 和 Agent 开发规范
+# AI 与 Agent 开发
 
-## 核心原则
+## 唯一运行时
 
-本项目使用 OpenAI API 进行 AI Agent 开发，所有 AI 相关代码应遵循以下规范。
+- 所有模型调用统一经过 `api/app/agents/agno.py`。
+- 不重新引入 `llm.py`、`dify.py` 或路由内直接调用模型 SDK。
+- `AgentSource` 只控制后台标签和 URL 预设；所有来源都使用 Agno `OpenAILike`。
+- 支持 OpenAI-compatible 基础地址和以 `/chat/completions` 结尾的完整地址。
 
-## LLM 工具位置
+## stop-slop Skill
 
-- **主要 LLM 工具**: [api/app/agents/llm.py](mdc:api/app/agents/llm.py)
-- **Dify 集成**: [api/app/agents/dify.py](mdc:api/app/agents/dify.py)
+- Skill 位于 `api/app/skills/stop-slop/`，启动时严格校验必需文件。
+- 规则与参考资料直接注入系统指令，以兼容不支持工具调用的提供商。
+- 保留原文事实、观点、语言、Markdown 和必要术语，不得杜撰。
+- 只返回改写正文，不添加解释、评分、标题或结束语。
+- 除同步上游任务外，不修改 Skill 的许可证、来源和参考资料。
 
-## OpenAI API 使用规范
+## 配置与安全
 
-### 1. 流式响应 (Streaming)
+- 默认配置来自 `AGENT_API_KEY`、`AGENT_BASE_URL`、`AGENT_MODEL_NAME` 和 `AGENT_MODEL_TEMPERATURE`。
+- 数据库 Agent 可通过 `model_conf` 覆盖受支持的模型参数。
+- API Key 只在服务端使用；普通用户 Schema 不得包含密钥。
+- 日志只记录 Agent ID、模型名、Token 数和异常类型，不记录原文、密钥或上游响应正文。
+- 外部错误转换为本地化、可公开的消息，不向客户端泄露内部细节。
 
-**必须使用流式响应**以提供更好的用户体验:
+## 生成与额度
 
-```python
-from openai import OpenAI
+- 文本优化是无状态改写，只处理最后一条用户正文。
+- 登录对话支持流式输出，并在结束时记录真实 Token 用量。
+- 流式请求开始前冻结 Agent 配置，避免持有已关闭 Session 的 ORM 对象。
+- 访客仅可使用免费 Agent；预占、提交和失败归还必须保持原子性。
+- 登录用户调用前必须执行会员 Agent 权限和用量限制检查。
 
-async def stream_chat_response(messages: list[dict]):
-    """
-    使用流式响应与 OpenAI API 交互。
-    
-    - 参数:
-      - messages: 聊天消息历史列表
-    - 返回:
-      - 异步生成器，逐块返回响应内容
-    """
-    client = OpenAI(api_key=settings.AGENT_API_KEY)
-    
-    stream = client.chat.completions.create(
-        model="gpt-4",
-        messages=messages,
-        stream=True  # 启用流式响应
-    )
-    
-    for chunk in stream:
-        if chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
-```
+## 测试
 
-### 2. 错误处理
-
-**必须处理所有可能的 API 错误**:
-
-```python
-from openai import OpenAIError, RateLimitError, APITimeoutError
-
-try:
-    response = await call_openai_api(messages)
-except RateLimitError:
-    # 处理速率限制错误
-    raise HTTPException(status_code=429, detail="API 调用频率超限")
-except APITimeoutError:
-    # 处理超时错误
-    raise HTTPException(status_code=504, detail="API 请求超时")
-except OpenAIError as e:
-    # 处理其他 OpenAI 错误
-    raise HTTPException(status_code=500, detail=f"AI 服务错误: {str(e)}")
-```
-
-### 3. 提示词 (Prompt) 管理
-
-**将系统提示词存储为常量或配置**:
-
-```python
-# 在配置文件或常量中定义
-SYSTEM_PROMPTS = {
-    "default": "你是一个有帮助的 AI 助手。",
-    "translator": "你是一个专业的翻译助手，负责将文本翻译成目标语言。",
-    "code_reviewer": "你是一个代码审查专家，负责检查代码质量和提出改进建议。"
-}
-
-def build_messages(user_input: str, prompt_type: str = "default"):
-    """
-    构建发送给 OpenAI 的消息列表。
-    
-    - 参数:
-      - user_input: 用户输入内容
-      - prompt_type: 系统提示词类型
-    - 返回:
-      - 格式化的消息列表
-    """
-    return [
-        {"role": "system", "content": SYSTEM_PROMPTS[prompt_type]},
-        {"role": "user", "content": user_input}
-    ]
-```
-
-### 4. Token 管理
-
-**监控和限制 Token 使用**:
-
-```python
-def count_tokens(text: str, model: str = "gpt-4") -> int:
-    """
-    估算文本的 Token 数量。
-    
-    - 参数:
-      - text: 要计算的文本
-      - model: 模型名称
-    - 返回:
-      - 估算的 Token 数量
-    """
-    # 使用 tiktoken 库进行精确计算
-    import tiktoken
-    encoding = tiktoken.encoding_for_model(model)
-    return len(encoding.encode(text))
-
-def truncate_messages(messages: list[dict], max_tokens: int = 4000) -> list[dict]:
-    """
-    截断消息历史以避免超过 Token 限制。
-    
-    - 参数:
-      - messages: 消息列表
-      - max_tokens: 最大 Token 数
-    - 返回:
-      - 截断后的消息列表
-    """
-    # 保留系统消息，从旧消息开始删除
-    system_messages = [m for m in messages if m["role"] == "system"]
-    other_messages = [m for m in messages if m["role"] != "system"]
-    
-    # 逆序遍历，保留最新的消息
-    result = system_messages.copy()
-    current_tokens = sum(count_tokens(m["content"]) for m in system_messages)
-    
-    for message in reversed(other_messages):
-        message_tokens = count_tokens(message["content"])
-        if current_tokens + message_tokens > max_tokens:
-            break
-        result.insert(len(system_messages), message)
-        current_tokens += message_tokens
-    
-    return result
-```
-
-## Agent 开发规范
-
-### 1. Agent 模型定义
-
-Agent 模型应包含以下关键字段 (参考 [api/app/models/agent.py](mdc:api/app/models/agent.py)):
-
-```python
-from sqlmodel import SQLModel, Field
-
-class Agent(SQLModel, table=True):
-    """AI Agent 数据模型"""
-    id: Optional[int] = Field(primary_key=True)
-    name: str = Field(description="Agent 名称")
-    description: str = Field(description="Agent 描述")
-    system_prompt: str = Field(description="系统提示词")
-    model: str = Field(default="gpt-4", description="使用的模型")
-    temperature: float = Field(default=0.7, description="生成温度参数")
-    max_tokens: int = Field(default=2000, description="最大生成 Token 数")
-    is_active: bool = Field(default=True, description="是否启用")
-```
-
-### 2. 消息历史管理
-
-**必须正确管理对话历史**:
-
-- 使用数据库存储消息历史 (参考 [api/app/models/message.py](mdc:api/app/models/message.py))
-- 按时间顺序加载消息
-- 实现消息截断策略以避免 Token 超限
-
-### 3. 流式响应的 FastAPI 实现
-
-**使用 `StreamingResponse` 返回流式数据**:
-
-```python
-from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
-
-@router.post("/chat/stream")
-async def chat_stream_endpoint(chat_input: ChatInput):
-    """
-    流式聊天 API 端点。
-    
-    - 请求: chat_input (包含消息内容和 agent_id)
-    - 响应: 流式文本响应
-    """
-    async def generate():
-        async for chunk in stream_chat_response(chat_input.messages):
-            yield chunk
-    
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream"
-    )
-```
-
-## 前端集成
-
-### 流式响应处理
-
-前端必须正确处理流式响应 (参考 [web/components/ai-stream-text.tsx](mdc:web/components/ai-stream-text.tsx)):
-
-```typescript
-async function fetchStreamingResponse(messages: Message[]) {
-  const response = await fetch('/api/v1/chat/stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ messages })
-  })
-
-  const reader = response.body?.getReader()
-  const decoder = new TextDecoder()
-
-  if (!reader) return
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    
-    const chunk = decoder.decode(value)
-    // 处理接收到的数据块
-    handleChunk(chunk)
-  }
-}
-```
-
-## 安全规范
-
-### 1. API Key 管理
-
-- **禁止硬编码 API Key**
-- 使用环境变量存储 (在 [api/app/core/config.py](mdc:api/app/core/config.py) 中配置)
-- 不同环境使用不同的 Key
-
-### 2. 用户输入验证
-
-**必须验证和清理用户输入**:
-
-```python
-from pydantic import BaseModel, Field, validator
-
-class ChatInput(BaseModel):
-    """聊天输入验证模型"""
-    content: str = Field(..., min_length=1, max_length=4000)
-    agent_id: int
-    
-    @validator('content')
-    def validate_content(cls, v):
-        # 移除潜在的恶意内容
-        v = v.strip()
-        if not v:
-            raise ValueError("消息内容不能为空")
-        return v
-```
-
-### 3. 速率限制
-
-**实现 API 调用速率限制**以防止滥用:
-
-```python
-from fastapi_limiter import FastAPILimiter
-from fastapi_limiter.depends import RateLimiter
-
-@router.post("/chat", dependencies=[Depends(RateLimiter(times=10, seconds=60))])
-async def chat_endpoint():
-    """每用户每分钟最多 10 次请求"""
-    pass
-```
-
-## 测试规范
-
-### 1. Mock OpenAI API
-
-测试时应 Mock OpenAI API 调用:
-
-```python
-from unittest.mock import patch, MagicMock
-
-@patch('openai.ChatCompletion.create')
-def test_chat_response(mock_create):
-    mock_create.return_value = MagicMock(
-        choices=[MagicMock(message={'content': 'Test response'})]
-    )
-    
-    result = call_openai_api([{"role": "user", "content": "Test"}])
-    assert result == 'Test response'
-```
-
-## 配置管理
-
-所有 AI 相关配置应在 [api/app/core/config.py](mdc:api/app/core/config.py) 中定义:
-
-```python
-class Settings(BaseSettings):
-    # OpenAI 配置
-    AGENT_API_KEY: str
-    AGENT_BASE_URL: str = "https://api.openai.com/v1"
-    AGENT_MODEL: str = "gpt-4"
-    AGENT_TEMPERATURE: float = 0.7
-    AGENT_MAX_TOKENS: int = 2000
-```
-
-## 常见问题
-
-### Q: 如何处理长对话历史?
-
-A: 使用消息截断策略，保留最新的 N 条消息，或使用滑动窗口机制。
-
-### Q: 如何优化响应速度?
-
-A: 
-1. 使用流式响应
-2. 减少系统提示词长度
-3. 使用更快的模型 (如 gpt-3.5-turbo)
-4. 实现响应缓存
-
-### Q: 如何处理并发请求?
-
-A: 使用异步处理 + 队列机制，避免同时发起过多 API 请求。
+- Mock Agno Agent 或 OpenAI-compatible 边界，单元测试不得调用真实模型。
+- 覆盖缺失配置、URL 归一化、空响应、流式事件、Token 映射和连接测试。
+- 覆盖日志与响应不泄露 API Key、用户正文和上游错误正文。
+- 修改 Skill 加载时覆盖文件缺失、校验失败和唯一 Skill 名称。

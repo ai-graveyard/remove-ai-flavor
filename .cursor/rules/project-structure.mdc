@@ -1,69 +1,36 @@
 ---
 alwaysApply: true
-description: Build AI Template 项目结构和技术栈指南
+description: Remove AI Flavor 项目结构和技术栈
 ---
 
-# Build AI Template - 项目结构指南
+# 项目结构
 
-## 项目概述
-
-这是一个用于快速构建 AI 应用的开源模板项目，核心功能是与智能代理（Agent）进行对话。
+Remove AI Flavor（RAIF）是文本去 AI 味应用，不是通用 Agent 模板。
 
 ## 技术栈
 
-- **前端**: Next.js 15.3 + TypeScript + Tailwind CSS + Shadcn UI + React 19
-- **后端**: FastAPI + Python 3.12 + SQLModel + PostgreSQL + Redis
-- **AI**: OpenAI API + 自定义 Agent 框架
-- **部署**: Docker + Docker Compose
-- **包管理**: 前端 `pnpm`，后端 `uv`
+- 前端：Next.js 15.3、React 19、TypeScript、Tailwind CSS 4、Shadcn UI、next-intl。
+- 后端：Python 3.12、FastAPI、SQLModel、PostgreSQL、Redis、Alembic。
+- AI：Agno `OpenAILike` + OpenAI-compatible 模型 + 内置 stop-slop Skill。
+- 工具：前端 pnpm，后端 uv，部署使用 Docker Compose 与 Nginx。
 
-## 核心目录结构
+## 目录
 
-### 后端 (`api/`)
+- `api/app/agents/agno.py`：统一模型适配层。
+- `api/app/skills/stop-slop/`：随服务发布的写作 Skill。
+- `api/app/routers/v1/`：认证、聊天、优化、会员、订单和管理 API。
+- `api/app/services/`：业务规则；`api/app/crud/`：数据库访问。
+- `api/app/models/` 与 `api/app/schemas/`：SQLModel 和 Pydantic 模型。
+- `api/alembic/versions/`：迁移；`api/tests/`：pytest 测试。
+- `web/app/[locale]/`：页面；`web/app/messages/`：中英文翻译。
+- `web/components/web/`：产品 UI；`web/components/admin/`：管理后台。
+- `web/util/`：认证、访客和任务工具。
+- `deploy/`：Compose、Nginx 和环境模板。
 
-- **`api/app/main.py`**: FastAPI 应用入口
-- **`api/app/core/`**: 核心配置 (安全, i18n)
-- **`api/app/models/`**: SQLModel 数据模型
-- **`api/app/schemas/`**: Pydantic 验证模式
-- **`api/app/routers/`**: API 路由定义
-- **`api/app/crud/`**: 数据库 CRUD 操作
-- **`api/app/services/`**: 业务逻辑服务
-- **`api/pyproject.toml`**: Python 依赖配置
+## 跨层要求
 
-### 前端 (`web/`)
-
-- **`web/app/`**: Next.js App Router 页面
-- **`web/components/`**: React 组件
-  - **`admin/`**: 后台管理模块 (pages, dialogs, components, sidebar)
-  - **`web/`**: 前台应用模块 (pages, dialogs, chat, editor, layout, sidebar)
-  - **`common/`**: 共享组件
-  - **`ui/`**: Shadcn UI 基础组件
-- **`web/i18n/`**: 国际化配置
-- **`web/util/`**: 工具函数
-- **`web/package.json`**: 前端依赖配置
-
-## 关键配置文件
-
-- **`deploy/docker-compose.yaml`**: 生产环境部署
-- **`deploy-test/docker-compose.yaml`**: 测试环境部署
-
-## 开发流程
-
-1. **后端优先**: 在 `api/` 中实现模型、路由和业务逻辑。
-2. **前端实现**: 在 `web/` 中创建对应的组件和页面。
-3. **样式开发**: 使用 Tailwind CSS 和 Shadcn UI。
-4. **国际化**: 添加翻译到 `web/app/messages/`。
-5. **类型定义**: 确保前后端类型一致。
-
-## 开发规范
-
-- **代码注释**: 必须为所有代码添加详细的中文注释。
-- **代码优先**: 专注于功能实现，让代码本身成为最好的文档。
-- **注释维护**: 代码修改时必须同步更新相关注释。
-
-## 核心功能模块
-
-- **用户管理**: 邮箱验证码登录、权限管理
-- **对话系统**: AI Agent 对话、流式响应
-- **管理后台**: 用户、对话、Agent 管理
-- **任务系统**: Agent 任务识别与执行
+- 数据库模型变化必须附带 Alembic 迁移。
+- 用户文案必须同步更新中英文翻译。
+- 前后端请求与响应类型必须保持一致。
+- 不得绕过 Agno、stop-slop、会员权限或访客额度逻辑。
+- 公共代码使用中文 docstring/JSDoc，复杂业务逻辑添加中文注释。

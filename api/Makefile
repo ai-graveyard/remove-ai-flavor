@@ -1,12 +1,12 @@
-# Build AI Template API - Makefile
+# Remove AI Flavor API - Makefile
 # 
 # 常用开发命令的快捷方式
 
-.PHONY: help install dev clean-imports check-imports format lint test
+.PHONY: help install dev clean-imports check-imports format lint test db-migrate db-upgrade db-history clean-file check-file
 
 # 默认目标
 help:
-	@echo "Build AI Template API - 开发工具"
+	@echo "Remove AI Flavor API - 开发工具"
 	@echo ""
 	@echo "可用命令:"
 	@echo "  install        安装依赖"
@@ -28,7 +28,7 @@ install:
 # 启动开发服务器
 dev:
 	@echo "🚀 启动开发服务器..."
-	python -m app.main
+	uv run python -m app.main
 
 # 清理未使用的 import（修复模式）
 clean-imports:
@@ -43,36 +43,36 @@ check-imports:
 # 格式化代码（仅格式化，不清理 import）
 format:
 	@echo "✨ 格式化代码..."
-	black --line-length 128 app
-	isort --profile black --line-length 128 app
+	uv run black --line-length 128 app tests
+	uv run isort --profile black --line-length 128 app tests
 
 # 代码检查
 lint:
 	@echo "🔍 代码检查..."
-	black --line-length 128 --check app
-	isort --profile black --line-length 128 --check-only app
-	autoflake --remove-all-unused-imports --remove-unused-variables --ignore-init-module-imports --check --recursive app
+	uv run black --line-length 128 --check app tests
+	uv run isort --profile black --line-length 128 --check-only app tests
+	uv run autoflake --remove-all-unused-imports --remove-unused-variables --ignore-init-module-imports --check --recursive app tests
 
-# 运行测试（如果有的话）
+# 运行后端测试
 test:
 	@echo "🧪 运行测试..."
-	@echo "暂未配置测试"
+	uv run pytest
 
 # 创建数据库迁移
 db-migrate:
 	@echo "📊 创建数据库迁移..."
 	@read -p "请输入迁移描述: " desc; \
-	alembic revision --autogenerate -m "$$desc"
+	uv run alembic revision --autogenerate -m "$$desc"
 
 # 执行数据库迁移
 db-upgrade:
 	@echo "📊 执行数据库迁移..."
-	alembic upgrade head
+	uv run alembic upgrade head
 
 # 查看数据库迁移历史
 db-history:
 	@echo "📊 数据库迁移历史..."
-	alembic history
+	uv run alembic history
 
 # 清理指定文件
 clean-file:

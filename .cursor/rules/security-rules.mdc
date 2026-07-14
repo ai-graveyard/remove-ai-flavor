@@ -1,256 +1,34 @@
 ---
-description: 安全开发规范和最佳实践
+description: 认证、密钥、隐私和权限边界规范
 ---
 
-# 安全开发规范
+# 安全规范
 
-## 核心安全原则
+## 认证与权限
 
-1. **永不信任用户输入** - 所有输入必须验证和清理
-2. **最小权限原则** - 用户只能访问必要的资源
-3. **深度防御** - 多层安全措施
-4. **安全存储** - 敏感数据必须加密
+- JWT 使用 `AUTH_SECRET_KEY`、`AUTH_ALGORITHM` 和配置的过期时间。
+- 生产环境必须关闭 `AUTH_IS_DEBUG`，不得使用示例验证码或默认密钥。
+- 所有用户资源查询必须按当前用户过滤；管理接口必须验证管理员身份。
+- Agent 访问遵循 `free < monthly < yearly`，创建聊天、发送消息、测试连接和文本优化都必须检查权限。
+- 访客接口只允许免费 Agent，并校验 `X-Guest-ID` 为 UUID。
 
-## 核心文件
+## 敏感数据
 
-- **安全模块**: [api/app/core/security.py](mdc:api/app/core/security.py)
-- **认证依赖**: [api/app/dependencies/auth.py](mdc:api/app/dependencies/auth.py)
-- **配置管理**: [api/app/core/config.py](mdc:api/app/core/config.py)
+- API Key、JWT、数据库密码、邮件凭据和 Stripe 密钥只从环境变量或服务端数据库读取。
+- 普通用户 Agent Schema 不得包含 `api_key`；新增响应模型时显式列出公开字段。
+- 日志不得记录用户原文、验证码、Token、API Key、完整上游响应或带凭据的 URL。
+- 不提交 `.env`、数据库转储、生产日志或真实用户数据。
 
-## 认证和授权
+## 输入与外部服务
 
-### 1. 密码安全
+- 使用 Pydantic/SQLModel 验证长度、枚举、UUID 和必填字段。
+- SQL 查询使用 SQLModel/SQLAlchemy 参数化表达式，不拼接用户输入。
+- 外部模型、邮件和支付错误转换为本地化通用消息，内部异常只记录脱敏类型。
+- 访客额度使用 Redis 原子操作；失败时归还预占，避免并发绕过限制。
+- 任何重定向和回调地址都必须限制为预期来源。
 
-**使用 bcrypt 加密密码**:
+## 部署
 
-```python
-from passlib.context import CryptContext
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-def get_password_hash(password: str) -> str:
-    """加密密码"""
-    return pwd_context.hash(password)
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """验证密码"""
-    return pwd_context.verify(plain_password, hashed_password)
-```
-
-**密码强度要求**:
-- 最少 8 个字符
-- 至少包含一个大写字母
-- 至少包含一个数字
-- 不能使用常见密码
-
-### 2. JWT Token
-
-**Token 生成和验证**:
-
-```python
-from datetime import datetime, timedelta
-from jose import jwt, JWTError
-from app.core.config import settings
-
-def create_access_token(data: dict) -> str:
-    """创建访问 Token"""
-    to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
-
-def verify_token(token: str) -> dict | None:
-    """验证 Token"""
-    try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload
-    except JWTError:
-        return None
-```
-
-### 3. 权限验证
-
-```python
-from fastapi import Depends, HTTPException
-from app.models.user import User
-from app.dependencies.auth import get_current_user
-
-async def require_admin(current_user: User = Depends(get_current_user)):
-    """要求管理员权限"""
-    if not current_user.is_admin:
-        raise HTTPException(status_code=403, detail="需要管理员权限")
-    return current_user
-
-@router.delete("/users/{user_id}", dependencies=[Depends(require_admin)])
-async def delete_user(user_id: int):
-    """删除用户（仅管理员）"""
-    pass
-```
-
-## 输入验证
-
-### 1. 使用 Pydantic 验证
-
-```python
-from pydantic import BaseModel, EmailStr, Field, validator
-
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=8, max_length=50)
-    
-    @validator('password')
-    def validate_password(cls, v):
-        if not any(c.isupper() for c in v):
-            raise ValueError('密码必须包含大写字母')
-        if not any(c.isdigit() for c in v):
-            raise ValueError('密码必须包含数字')
-        return v
-```
-
-### 2. SQL 注入防护
-
-**始终使用参数化查询**:
-
-```python
-# ✅ 正确 - 使用 SQLModel/SQLAlchemy
-from sqlmodel import select
-statement = select(User).where(User.email == email)
-user = db.exec(statement).first()
-
-# ❌ 错误 - 拼接 SQL
-query = f"SELECT * FROM users WHERE email = '{email}'"
-```
-
-### 3. XSS 防护
-
-**前端自动转义**:
-- React 默认转义 HTML
-- 避免使用 `dangerouslySetInnerHTML`
-- 使用 DOMPurify 清理 HTML
-
-```typescript
-import DOMPurify from 'dompurify'
-
-const sanitized = DOMPurify.sanitize(userInput)
-```
-
-## API 安全
-
-### 1. CORS 配置
-
-```python
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.FRONTEND_URL],  # 不要使用 ["*"]
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
-```
-
-### 2. 速率限制
-
-```python
-from fastapi_limiter import FastAPILimiter
-from fastapi_limiter.depends import RateLimiter
-
-@router.post("/login", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
-async def login():
-    """登录接口，每分钟最多 5 次"""
-    pass
-```
-
-### 3. HTTPS
-
-**生产环境必须使用 HTTPS**:
-- 配置 SSL 证书
-- 使用 HSTS 头
-- 重定向 HTTP 到 HTTPS
-
-## 数据安全
-
-### 1. 敏感信息保护
-
-**不要在日志或响应中暴露敏感信息**:
-
-```python
-# ❌ 错误
-logger.info(f"User password: {password}")
-return {"user": user, "password": password}
-
-# ✅ 正确
-logger.info(f"User login: {user.email}")
-return {"user": user}  # 不包含密码
-```
-
-### 2. 环境变量
-
-**敏感配置使用环境变量**:
-
-```python
-from pydantic_settings import BaseSettings
-
-class Settings(BaseSettings):
-    SECRET_KEY: str
-    DATABASE_URL: str
-    AGENT_API_KEY: str
-    
-    class Config:
-        env_file = ".env"
-```
-
-### 3. 数据库安全
-
-- 使用最小权限数据库用户
-- 定期备份
-- 加密传输连接
-
-## 前端安全
-
-### 1. Token 存储
-
-```typescript
-// 存储在 httpOnly Cookie (最安全)
-// 或者存储在 localStorage (需要额外防护)
-
-export function setAuthToken(token: string) {
-  localStorage.setItem('auth_token', token)
-}
-
-export function getAuthToken(): string | null {
-  return localStorage.getItem('auth_token')
-}
-
-export function removeAuthToken() {
-  localStorage.removeItem('auth_token')
-}
-```
-
-### 2. CSRF 防护
-
-```typescript
-// 添加 CSRF Token 到请求头
-const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-
-fetch('/api/v1/data', {
-  method: 'POST',
-  headers: {
-    'X-CSRF-Token': csrfToken
-  }
-})
-```
-
-## 最佳实践清单
-
-- [ ] 所有密码使用 bcrypt 加密
-- [ ] 使用 JWT 进行身份验证
-- [ ] 实现权限验证
-- [ ] 使用 Pydantic 验证输入
-- [ ] 配置 CORS 白名单
-- [ ] 实现速率限制
-- [ ] 使用 HTTPS
-- [ ] 敏感配置使用环境变量
-- [ ] 不在日志中记录敏感信息
-- [ ] 前端使用 httpOnly Cookie 存储 Token
+- 使用 HTTPS，限制 PostgreSQL 和 Redis 的公网访问。
+- `.env`、备份和数据卷采用最小权限并定期轮换凭据。
+- 依赖升级后运行测试，安全修复不得通过跳过验证或关闭保护实现。

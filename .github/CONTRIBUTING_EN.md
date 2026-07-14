@@ -1,44 +1,116 @@
-# CONTRIBUTING
+# Contributing
 
-Thank you for your interest in contributing to Build AI Template — that’s awesome! We’re truly excited to see the ideas and improvements you’ll bring.
+Thank you for contributing to Remove AI Flavor (RAIF). Bug fixes, product improvements, tests, documentation, and translations are welcome.
 
-Build AI Template is an open-source platform for developing conversational agent applications, designed to make building AI agents simpler and more powerful. As we’re still in the early stages, with a small team and limited resources, we’re driven by the vision of creating the best possible agent-building experience. In this journey, every bit of support from the community counts — and we sincerely appreciate yours.
+By contributing, you agree to follow the [Code of Conduct](./CODE_OF_CONDUCT_EN.md) and license your contribution under the project's [Apache License 2.0](../LICENSE).
 
-While we move fast and stay agile, we also deeply care about making the contribution experience as smooth as possible for developers like you. That’s why we’ve put together this guide — to help you quickly get familiar with Build AI Template’s codebase, development flow, and collaboration process, so you can jump right into the fun part.
+[中文](./CONTRIBUTING.md)
 
-Like Build AI Template itself, this guide is a work in progress. If you find anything unclear or outdated as you read through, we’d love your feedback and suggestions to help us make it better — together.
+## Before starting
 
-In terms of licensing, please take a minute to read our short [License and Contributor Agreement](../LICENSE). The community also adheres to the [code of conduct](./CODE_OF_CONDUCT_EN.md).
+1. Search existing issues and pull requests to avoid duplicate work.
+2. Open an issue before implementing a large feature, data-model change, or breaking API change.
+3. Create a focused branch from the latest `main`; do not mix unrelated refactors into the same pull request.
+4. Read [`AGENTS.md`](../AGENTS.md) for repository commands, comment conventions, and test expectations.
 
-Join the fun, contribute, and let's build something awesome together! 💡✨
+## Local development
 
-Don't forget to link an existing issue or open a new issue in the PR's description.
+Requirements:
+
+- Python `>=3.12,<3.14` and uv
+- Node.js `>=20` and pnpm `>=9`
+- PostgreSQL and Redis
+
+Setup:
+
+```bash
+git clone https://github.com/open-v2ai/remove-ai-flavor.git
+cd remove-ai-flavor
+
+cp api/.env.example api/.env
+cp web/.env.example web/.env
+
+bash api/scripts/run_postgres.sh
+bash api/scripts/run_redis.sh
+
+cd api
+uv sync
+uv run alembic upgrade head
+
+cd ../web
+pnpm install
+```
+
+Run the services in separate terminals:
+
+```bash
+make dev-api
+make dev-web
+```
+
+The web app defaults to <http://localhost:3009> and the API to <http://localhost:8000>.
+
+## Change requirements
+
+- Public Python functions, classes, models, and API endpoints should have clear Chinese docstrings.
+- React components, hooks, and important utilities should have Chinese JSDoc; add Chinese inline comments for non-obvious business logic.
+- Update both `web/app/messages/zh.json` and `web/app/messages/en.json` for user-facing copy.
+- Include a reviewed Alembic migration with every database model change.
+- Reuse `api/app/agents/agno.py` for model execution; do not bypass the stop-slop Skill, access checks, or log redaction.
+- Never commit `.env` files, API keys, database passwords, JWT secrets, Stripe credentials, or user data.
+- Do not modify the provenance, license, or rules under `api/app/skills/stop-slop/` unless the pull request explicitly synchronizes upstream.
+
+## Tests
+
+Run the checks relevant to your change:
+
+```bash
+# Backend
+cd api
+make test
+make lint
+
+# Frontend
+cd ../web
+pnpm test
+pnpm build
+make i18n-check
+
+# Markdown (repository root)
+cd ..
+pnpm lint:md
+```
+
+Bug fixes should include a regression test when practical. Changes to guest usage, membership access, migrations, and the Agent adapter must test both success and failure paths.
+
+## Commits and pull requests
+
+Use concise commit messages that describe the purpose:
+
+```text
+fix: preserve guest usage after refresh
+docs: update local development guide
+```
+
+Pull requests should include:
+
+- Why the change is needed and what it does.
+- A linked issue.
+- Tests run and their results.
+- Screenshots or recordings for UI changes.
+- Migration, configuration, or deployment notes.
+- Known limitations and follow-up work.
+
+Keep the diff reviewable: remove debug output, temporary files, and unrelated formatting, and update documentation with behavior changes.
 
 ## Bug reports
 
-> [!IMPORTANT]
-> Please make sure to include the following information when submitting a bug report:
+Include:
 
-- A clear and descriptive title
-- A detailed description of the bug, including any error messages
-- Steps to reproduce the bug
-- Expected behavior
-- **Logs**, if available, for backend issues, this is really important, you can find them in docker-compose logs
-- Screenshots or videos, if applicable
+- A clear title and impact.
+- Reproduction steps, expected behavior, and actual behavior.
+- Browser, operating system, deployment method, and relevant versions.
+- Redacted browser-console or service logs.
+- Screenshots, recordings, or a minimal reproduction when useful.
 
-How we prioritize:
-
-For setting up the frontend service, please refer to our comprehensive [guide](../web/README.md) in the `web/README.md` file. This document provides detailed instructions to help you set up the frontend environment properly.
-
-For setting up the backend service, kindly refer to our detailed [instructions](../api/README.md) in the `api/README.md` file. This document contains step-by-step guidance to help you get the backend up and running smoothly.
-
-## Other things to note
-
-We recommend reviewing this document carefully before proceeding with the setup, as it contains essential information about:
-
-- Prerequisites and dependencies
-- Installation steps
-- Configuration details
-- Common troubleshooting tips
-
-Feel free to reach out if you encounter any issues during the setup process.
+Never post credentials, access tokens, complete `.env` files, user text, or other private data in an issue.

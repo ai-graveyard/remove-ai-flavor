@@ -1,174 +1,188 @@
 # 部署指南
 
-本目录支持通过 `.env` 文件配置不同的部署环境(生产环境、测试环境等)。
+`deploy/` 使用 Docker Compose 运行 Web、API、Nginx、PostgreSQL、Redis 和 Stripe CLI。环境差异由 `.env` 控制，不需要复制或修改 Compose 文件。
+
+## 前置条件
+
+- Docker 26+
+- Docker Compose 2.25+
+- 可访问的 OpenAI-compatible 模型
+- 用于登录验证码的 SMTP 或 Resend 账号
+- 使用支付功能时所需的 Stripe 账号
 
 ## 快速开始
 
-### 1. 选择环境配置
+```bash
+cd deploy
+cp .env.example .env
+```
 
-根据你要部署的环境,复制对应的配置文件:
+编辑 `.env`，至少替换：
+
+```dotenv
+AUTH_SECRET_KEY=replace-with-a-long-random-secret
+POSTGRES_PASSWORD=replace-with-a-database-password
+REDIS_PASSWORD=replace-with-a-redis-password
+
+AGENT_API_KEY=sk-...
+AGENT_BASE_URL=https://api.openai.com/v1/chat/completions
+AGENT_MODEL_NAME=gpt-4.1-mini
+
+MAIL_SEND_METHOD=SMTP
+MAIL_USERNAME=no-reply@example.com
+MAIL_PASSWORD=replace-with-a-mail-password
+MAIL_FROM=no-reply@example.com
+MAIL_SERVER=smtp.example.com
+
+STRIPE_PUBLIC_KEY=pk_...
+STRIPE_PRIVATE_KEY=sk_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+```
+
+构建并启动：
 
 ```bash
-# 生产环境
-cp .env.example .env
+make build-all
+make start
+```
 
-# 测试环境
+默认入口：
+
+- Web 与管理后台：<http://localhost:8081>
+- OpenAPI：<http://localhost:8081/api/v1/docs>
+
+## 常用命令
+
+```bash
+make build-api     # 构建 API 镜像
+make build-web     # 构建 Web 镜像
+make build-all     # 构建全部镜像
+make push-all      # 推送全部镜像
+make start         # 启动服务
+make stop          # 停止并移除容器
+make logs          # 持续查看日志
+make restart       # 重启并查看日志
+make rebuild       # 停止、重建、启动并查看日志
+make deploy        # 构建并重启
+make deploy-ci     # 拉取 main 并执行无交互部署
+```
+
+仓库根目录的 `Makefile` 会把部署命令转发到本目录，因此也可以在根目录运行 `make start`、`make logs` 等命令。
+
+## GitHub Actions 自动部署
+
+`.github/workflows/deploy.yml` 会在 GitHub 仓库 `main` 分支中的 API、Web、部署配置或工作流发生变化时，通过 SSH 登录服务器并执行 `make deploy-ci`。也可以在 Actions 页面手动触发。
+
+先在服务器上完成一次初始化：
+
+1. 克隆仓库并切换到 `main` 分支。
+2. 在 `deploy/.env` 中配置生产环境变量。
+3. 确认部署用户可以执行 `git pull --ff-only`、Docker 和 Docker Compose。
+4. 手动运行一次 `make deploy-ci`，确认数据库迁移和健康检查均能通过。
+
+然后在 GitHub 仓库的 `Settings > Secrets and variables > Actions` 中添加：
+
+- `EC2_HOST`：服务器地址。
+- `EC2_PORT`：SSH 端口，通常为 `22`。
+- `EC2_USER`：部署用户。
+- `EC2_SSH_KEY`：部署用户对应的 SSH 私钥。
+- `EC2_KNOWN_HOSTS`：服务器的 SSH host key；应从可信渠道获取并核对指纹。
+- `DEPLOY_PATH`：服务器上的仓库绝对路径，例如 `/opt/remove-ai-flavor`。
+
+自动部署会在服务器本地构建镜像，依次启动 PostgreSQL 和 Redis、执行 Alembic 迁移、启动全部服务并等待健康检查。任一步骤失败时，Action 会失败并输出必要的容器诊断信息。
+
+## 服务与端口
+
+- `nginx`：默认暴露 `8081`，统一代理 Web 和 `/api/`。
+- `web`：容器内监听 `3000`，不直接暴露主机端口。
+- `api`：容器内监听 `8000`，健康检查访问 `/health`。
+- `postgres`：主机默认暴露 `15432`，容器内为 `5432`。
+- `redis`：主机默认暴露 `16379`，容器内为 `6379`。
+- `stripe-cli`：把 Stripe webhook 转发到 `/api/v1/orders/stripe/webhook`。
+
+如果不使用支付，可在本地 Compose 副本中停用 `stripe-cli`；API 其他功能仍可运行。
+
+## 环境切换
+
+生产模板：
+
+```bash
+cp .env.example .env
+```
+
+测试模板：
+
+```bash
 cp .env.test.example .env
 ```
 
-### 2. 修改配置
+同一主机运行多个环境时，每个环境必须设置不同的值：
 
-编辑 `.env` 文件,填入你的实际配置:
-
-```bash
-# 必须修改的配置
-AUTH_SECRET_KEY=your_secure_secret_key_here
-POSTGRES_PASSWORD=your_secure_password_here
-REDIS_PASSWORD=your_secure_redis_password_here
-AGENT_API_KEY=sk-proj-xxxxx
-STRIPE_PRIVATE_KEY=sk_live_xxxxx
-STRIPE_WEBHOOK_SECRET=whsec_xxxxx
-MAIL_PASSWORD=your_mail_password_here
-```
-
-### 3. 启动服务
-
-```bash
-# 启动所有服务
-make start
-
-# 查看日志
-make logs
-
-# 停止服务
-make stop
-
-# 重启服务
-make restart
-
-# 重新构建并启动
-make rebuild
-```
-
-## 环境配置说明
-
-### 关键环境变量
-
-| 变量 | 说明 | 生产环境 | 测试环境 |
-|------|------|----------|----------|
-| `ENV` | 环境标识 | `prod` | `test` |
-| `IMAGE_SUFFIX` | 镜像名后缀 | 空 | `-test` |
-| `CONTAINER_SUFFIX` | 容器名后缀 | 空 | `-test` |
-| `NETWORK_NAME` | Docker 网络名 | `remove-ai-flavor-network` | `remove-ai-flavor-network-test` |
-| `NGINX_PORT` | Nginx 对外端口 | `8081` | `8081` |
-| `POSTGRES_EXPOSE_PORT` | PostgreSQL 对外端口 | `15432` | `15433` |
-| `REDIS_EXPOSE_PORT` | Redis 对外端口 | `16379` | `16380` |
-
-### 镜像命名规则
-
-- **生产环境**: `v2ai/remove-ai-flavor-api:latest`
-- **测试环境**: `v2ai/remove-ai-flavor-api-test:latest`
-
-### 容器命名规则
-
-- **生产环境**: `remove-ai-flavor-api`
-- **测试环境**: `remove-ai-flavor-api-test`
-
-## 多环境同时运行
-
-由于容器名、网络名和端口都通过 `.env` 配置,你可以在同一台服务器上同时运行生产和测试环境:
-
-```bash
-# 在 deploy 目录创建两个子目录
-mkdir -p prod test
-
-# 复制配置到各自目录
-cp docker-compose.yaml nginx/default.conf makefile prod/
-cp docker-compose.yaml nginx/default.conf makefile test/
-cp .env.prod prod/.env
-cp .env.test test/.env
-
-# 分别启动
-cd prod && make start
-cd ../test && make start
-```
-
-## 构建和推送镜像
-
-```bash
-# 构建所有镜像
-make build-all
-
-# 推送所有镜像
-make push-all
-
-# 构建并推送
-make build-push-all
-
-# 单独构建和推送
-make build-push-api
-make build-push-web
-make build-push-docs
-```
-
-## 常见问题
-
-### 1. 端口冲突
-
-如果遇到端口冲突,修改 `.env` 中的端口配置:
-
-```bash
+```dotenv
+IMAGE_SUFFIX=-test
+CONTAINER_SUFFIX=-test
+NETWORK_NAME=remove-ai-flavor-network-test
 NGINX_PORT=8082
-POSTGRES_EXPOSE_PORT=15434
-REDIS_EXPOSE_PORT=16381
+POSTGRES_EXPOSE_PORT=15433
+REDIS_EXPOSE_PORT=16380
 ```
 
-### 2. 数据持久化
+Compose 项目名由 `CONTAINER_PREFIX` 和 `CONTAINER_SUFFIX` 组合生成。避免多个环境复用同一个 `volumes/` 目录。
 
-数据存储在 `volumes/` 目录下:
+## 数据库迁移
 
-```
-deploy/
-├── volumes/
-│   ├── db/data/      # PostgreSQL 数据
-│   └── redis/data/   # Redis 数据
-```
-
-### 3. 网络隔离
-
-不同环境使用不同的 Docker 网络,互不干扰:
-
-- 生产环境: `remove-ai-flavor-network`
-- 测试环境: `remove-ai-flavor-network-test`
-
-## 安全建议
-
-1. **永远不要提交 `.env` 文件到 Git**
-2. **使用强密码** - 特别是 `AUTH_SECRET_KEY`, `POSTGRES_PASSWORD`, `REDIS_PASSWORD`
-3. **生产环境关闭调试模式** - 设置 `AUTH_IS_DEBUG=False`, `API_RELOAD=False`
-4. **定期备份数据库** - 备份 `volumes/db/data` 目录
-5. **使用 HTTPS** - 在 Nginx 配置中启用 SSL/TLS
-
-## 健康检查
-
-服务启动后,可以通过以下 URL 检查服务状态:
+首次部署和每次包含迁移的升级都应执行：
 
 ```bash
-# API 健康检查
-curl http://localhost:8081/api/v1/health
+docker compose exec api alembic upgrade head
+```
 
-# 查看所有容器状态
+查看当前版本：
+
+```bash
+docker compose exec api alembic current
+```
+
+不要依赖应用启动时的 `create_all` 替代 Alembic；它不会安全地修改现有列或约束。
+
+## 日志与健康检查
+
+```bash
 docker compose ps
-```
-
-## 日志管理
-
-```bash
-# 查看所有服务日志
-make logs
-
-# 查看特定服务日志
 docker compose logs -f api
 docker compose logs -f web
-docker compose logs -f postgres
+docker compose logs -f nginx
+docker compose exec api wget -qO- http://127.0.0.1:8000/health
 ```
+
+出现模型调用错误时，依次检查 `AGENT_API_KEY`、`AGENT_BASE_URL`、`AGENT_MODEL_NAME` 和上游网络。API 日志会隐藏密钥，但生产日志仍不应发送到不受信任的平台。
+
+## 数据持久化与备份
+
+默认数据目录：
+
+```text
+deploy/volumes/
+├── db/data/
+└── redis/data/
+```
+
+备份 PostgreSQL：
+
+```bash
+docker compose exec -T postgres \
+  pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB" > backup.sql
+```
+
+恢复前应停止写入并先验证备份。Redis 中包含短期验证码、缓存和访客额度，通常不替代 PostgreSQL 备份。
+
+## 生产安全清单
+
+- 更换 `.env.example` 中的所有示例密钥和密码。
+- 设置 `AUTH_IS_DEBUG=False`、`API_RELOAD=False`。
+- 使用 HTTPS，并在可信反向代理层终止 TLS。
+- 不向公网暴露 PostgreSQL 和 Redis；如无运维需要，删除对应 `ports`。
+- 限制 `.env` 和 `volumes/` 的文件权限，并确保它们不进入 Git。
+- 定期轮换 API Key、邮件凭据、Stripe 密钥和 JWT 密钥。
+- 为数据库建立自动备份和恢复演练。
+- 升级前执行数据库备份，并先在测试环境运行迁移。

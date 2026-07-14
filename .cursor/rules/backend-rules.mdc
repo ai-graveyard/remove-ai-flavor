@@ -48,6 +48,9 @@ api/
 - **安全模块**: [api/app/core/security.py](mdc:api/app/core/security.py)
 - **数据库依赖**: [api/app/dependencies/db.py](mdc:api/app/dependencies/db.py)
 - **认证依赖**: [api/app/dependencies/auth.py](mdc:api/app/dependencies/auth.py)
+- **Agno 适配**: [api/app/agents/agno.py](mdc:api/app/agents/agno.py)
+- **文本优化路由**: [api/app/routers/v1/text_optimizer.py](mdc:api/app/routers/v1/text_optimizer.py)
+- **访客额度服务**: [api/app/services/guest_usage_service.py](mdc:api/app/services/guest_usage_service.py)
 
 ## 代码规范
 
@@ -499,8 +502,8 @@ def create_access_token(data: dict, expires_delta: timedelta = None):
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(
         to_encode,
-        settings.SECRET_KEY,
-        algorithm=settings.ALGORITHM
+        settings.AUTH_SECRET_KEY,
+        algorithm=settings.AUTH_ALGORITHM
     )
     return encoded_jwt
 ```

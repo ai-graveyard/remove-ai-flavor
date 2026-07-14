@@ -1,11 +1,11 @@
-# Build AI Template - Web Frontend Makefile
+# Remove AI Flavor - Web Frontend Makefile
 # 用于前端 i18n 检查和管理的工具
 
 .PHONY: help i18n-check i18n-unused i18n-missing i18n-stats i18n-remove-unused clean
 
 # 默认目标
 help:
-	@echo "Build AI Template - Web Frontend 可用命令:"
+	@echo "Remove AI Flavor - Web Frontend 可用命令:"
 	@echo ""
 	@echo "i18n 相关命令:"
 	@echo "  make i18n-check        - 完整的 i18n 检查（包括未使用和缺失的 key）"

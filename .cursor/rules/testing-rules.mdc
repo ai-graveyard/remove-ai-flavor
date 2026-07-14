@@ -1,221 +1,50 @@
 ---
-description: 测试开发规范和最佳实践
+description: pytest 与 Vitest 测试规范
 ---
 
-# 测试开发规范
+# 测试规范
 
-## 测试原则
+## 原则
 
-1. **测试关键功能** - 优先测试核心业务逻辑
-2. **测试边界情况** - 包括错误处理和异常情况
-3. **保持测试简单** - 每个测试只验证一个功能
-4. **测试独立性** - 测试之间不应相互依赖
+- 测试行为和业务边界，不绑定无关实现细节。
+- 每个测试独立、可重复，不依赖执行顺序或真实外部服务。
+- Bug 修复优先添加失败用例，再完成修复。
+- 同时覆盖成功、拒绝、异常和边界输入。
 
-## 后端测试 (Python/FastAPI)
+## 后端
 
-### 1. 测试工具
-
-- **框架**: pytest
-- **HTTP 测试**: TestClient (FastAPI)
-- **数据库**: 使用测试数据库或 SQLite 内存数据库
-- **Mock**: unittest.mock
-
-### 2. 基础测试示例
-
-```python
-import pytest
-from fastapi.testclient import TestClient
-from sqlmodel import Session, create_engine, SQLModel
-from app.main import app
-from app.dependencies.db import get_db
-
-# 测试数据库
-TEST_DATABASE_URL = "sqlite:///test.db"
-engine = create_engine(TEST_DATABASE_URL, connect_args={"check_same_thread": False})
-
-@pytest.fixture
-def db_session():
-    """数据库会话 fixture"""
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
-    SQLModel.metadata.drop_all(engine)
-
-@pytest.fixture
-def client(db_session):
-    """测试客户端 fixture"""
-    def override_get_db():
-        yield db_session
-    
-    app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
-    app.dependency_overrides.clear()
-
-def test_create_user(client):
-    """测试创建用户"""
-    response = client.post("/api/v1/users", json={
-        "email": "test@example.com",
-        "password": "Test1234"
-    })
-    assert response.status_code == 201
-    assert response.json()["email"] == "test@example.com"
-```
-
-### 3. 认证测试
-
-```python
-@pytest.fixture
-def auth_headers(client, db_session):
-    """创建认证用户并返回 headers"""
-    # 创建用户
-    user = create_test_user(db_session)
-    
-    # 登录获取 token
-    response = client.post("/api/v1/auth/login", json={
-        "email": user.email,
-        "password": "password"
-    })
-    token = response.json()["access_token"]
-    
-    return {"Authorization": f"Bearer {token}"}
-
-def test_get_current_user(client, auth_headers):
-    """测试获取当前用户信息"""
-    response = client.get("/api/v1/users/me", headers=auth_headers)
-    assert response.status_code == 200
-```
-
-### 4. Mock 外部服务
-
-```python
-from unittest.mock import patch, MagicMock
-
-@patch('app.services.email_service.EmailService.send_email')
-def test_send_verification_email(mock_send_email, client):
-    """测试发送验证邮件"""
-    mock_send_email.return_value = True
-    
-    response = client.post("/api/v1/auth/send-code", json={
-        "email": "test@example.com"
-    })
-    
-    assert response.status_code == 200
-    mock_send_email.assert_called_once()
-```
-
-## 前端测试 (React/Next.js)
-
-### 1. 测试工具
-
-- **框架**: Jest + React Testing Library
-- **组件测试**: @testing-library/react
-- **用户交互**: @testing-library/user-event
-- **Mock**: MSW (Mock Service Worker)
-
-### 2. 组件测试
-
-```typescript
-import { render, screen } from '@testing-library/react'
-import { NextIntlClientProvider } from 'next-intl'
-import LoginPage from '@/app/[locale]/login/page'
-
-test('renders login form', () => {
-  const messages = {
-    auth: {
-      login: 'Login',
-      email: 'Email',
-      password: 'Password'
-    }
-  }
-  
-  render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <LoginPage />
-    </NextIntlClientProvider>
-  )
-  
-  expect(screen.getByText('Login')).toBeInTheDocument()
-  expect(screen.getByPlaceholderText('Email')).toBeInTheDocument()
-})
-```
-
-### 3. 用户交互测试
-
-```typescript
-import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-
-test('user can login', async () => {
-  const user = userEvent.setup()
-  render(<LoginPage />)
-  
-  await user.type(screen.getByPlaceholderText('Email'), 'test@example.com')
-  await user.type(screen.getByPlaceholderText('Password'), 'password123')
-  await user.click(screen.getByRole('button', { name: 'Login' }))
-  
-  expect(screen.getByText('Login successful')).toBeInTheDocument()
-})
-```
-
-### 4. API Mock
-
-```typescript
-import { setupServer } from 'msw/node'
-import { rest } from 'msw'
-
-const server = setupServer(
-  rest.post('/api/v1/auth/login', (req, res, ctx) => {
-    return res(ctx.json({
-      access_token: 'fake-token',
-      user: { email: 'test@example.com' }
-    }))
-  })
-)
-
-beforeAll(() => server.listen())
-afterEach(() => server.resetHandlers())
-afterAll(() => server.close())
-```
-
-## 测试命令
+后端使用 pytest，测试位于 `api/tests/`：
 
 ```bash
-# 后端
 cd api
-pytest                    # 运行所有测试
-pytest tests/test_users.py  # 运行特定文件
-pytest -v                 # 详细输出
-pytest --cov              # 代码覆盖率
+uv run pytest
+uv run pytest tests/test_guest_usage_service.py
+```
 
-# 前端
+- Mock 模型、邮件、Stripe 和网络请求。
+- Redis 业务可使用明确的 fake/stub；涉及 Lua 原子语义时补充集成验证。
+- 数据库测试使用隔离 Session，不复用开发或生产数据。
+- Agent 测试覆盖配置、Skill 加载、流式输出、Token 和脱敏。
+- 迁移测试检查 revision 链、`upgrade` 和关键 `downgrade` 行为。
+
+## 前端
+
+前端使用 Vitest，测试与模块同目录，命名为 `*.test.ts` 或 `*.test.tsx`：
+
+```bash
 cd web
-pnpm test                 # 运行所有测试
-pnpm test:watch          # 监听模式
-pnpm test:coverage       # 代码覆盖率
+pnpm test
+pnpm build
 ```
 
-## 测试文件组织
+- 优先测试无 DOM 依赖的纯工具函数。
+- 浏览器存储测试必须清理全局状态。
+- 覆盖访客额度、登录跳转、新任务确认和草稿恢复。
+- UI 改动至少通过生产构建和 TypeScript 检查。
 
-```
-api/
-├── tests/
-│   ├── conftest.py       # 共享 fixtures
-│   ├── test_users.py
-│   ├── test_auth.py
-│   └── test_chat.py
+## 提交前
 
-web/
-├── __tests__/
-│   ├── components/
-│   │   └── LoginForm.test.tsx
-│   └── pages/
-│       └── login.test.tsx
-```
-
-## 最佳实践
-
-1. **AAA 模式**: Arrange (准备), Act (执行), Assert (断言)
-2. **使用 fixtures**: 复用测试数据和配置
-3. **Mock 外部依赖**: 避免测试依赖外部服务
-4. **测试边界情况**: 包括空值、错误输入等
-5. **保持测试快速**: 使用内存数据库，避免不必要的延迟
+- 先运行最小相关测试，再根据影响范围运行完整套件。
+- 不删除或放宽断言来掩盖失败。
+- 新增依赖前确认现有 pytest/Vitest 工具无法满足需求。
+- 测试失败时报告具体命令和失败原因，不声称未运行的检查已通过。

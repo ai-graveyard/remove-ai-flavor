@@ -130,7 +130,7 @@ t('messages', { count: messageCount })
 
 ### 5. 语言切换
 
-使用 [web/components/language-switch-button.tsx](mdc:web/components/language-switch-button.tsx):
+使用 [web/components/common/language-switch-button.tsx](mdc:web/components/common/language-switch-button.tsx):
 
 ```typescript
 'use client'
@@ -330,7 +330,7 @@ pnpm dlx shadcn-ui@latest add [component-name]
 
 ### 4. Dark Mode 切换
 
-使用 [web/components/theme-toggle-button.tsx](mdc:web/components/theme-toggle-button.tsx):
+使用 [web/components/common/theme-toggle-button.tsx](mdc:web/components/common/theme-toggle-button.tsx):
 
 ```tsx
 'use client'

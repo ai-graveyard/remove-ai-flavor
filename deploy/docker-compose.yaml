@@ -52,9 +52,11 @@ services:
       RESEND_API_KEY: ${RESEND_API_KEY:-re_1234}
       RESEND_MAIL_FROM: ${RESEND_MAIL_FROM:-onboarding@resend.dev}
       # 大模型与 Agent
+      AGENT_SOURCE: ${AGENT_SOURCE:-llm}
       AGENT_API_KEY: ${AGENT_API_KEY:-sk-proj-***}
       AGENT_BASE_URL: ${AGENT_BASE_URL:-https://api.openai.ai/v1/chat/completions}
       AGENT_MODEL_NAME: ${AGENT_MODEL_NAME:-gpt-4.1-mini}
+      AGENT_MODEL_TEMPERATURE: ${AGENT_MODEL_TEMPERATURE:-0.7}
       # 会员与支付
       STRIPE_PUBLIC_KEY: ${STRIPE_PUBLIC_KEY:-pk_test_xxx}
       STRIPE_PRIVATE_KEY: ${STRIPE_PRIVATE_KEY:-sk_test_xxx}
