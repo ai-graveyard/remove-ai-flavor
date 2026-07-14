@@ -2,6 +2,7 @@
   "name": "remove-ai-flavor-web",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.15.1",
   "description": "Remove AI Flavor Web",
   "engines": {
     "node": ">=20.x",
