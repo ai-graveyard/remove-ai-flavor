@@ -3,7 +3,7 @@
 DEPLOY_DIR := deploy
 COMPOSE := docker compose --project-directory $(DEPLOY_DIR) -f $(DEPLOY_DIR)/docker-compose.yaml
 
-# 加载部署环境变量，并为未配置的本地环境提供与 Compose 一致的默认值。
+# 加载镜像构建与部署变量；本地开发服务分别读取 api/.env 和 web/.env。
 -include $(DEPLOY_DIR)/.env
 DOCKER_REGISTRY ?= v2ai
 IMAGE_PREFIX ?= remove-ai-flavor
@@ -12,7 +12,6 @@ VERSION ?= latest
 CONTAINER_PREFIX ?= remove-ai-flavor
 CONTAINER_SUFFIX ?=
 ENV ?= prod
-export
 
 API_IMAGE := $(DOCKER_REGISTRY)/$(IMAGE_PREFIX)-api$(IMAGE_SUFFIX)
 WEB_IMAGE := $(DOCKER_REGISTRY)/$(IMAGE_PREFIX)-web$(IMAGE_SUFFIX)
