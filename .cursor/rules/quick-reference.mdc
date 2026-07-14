@@ -42,7 +42,7 @@ pnpm build
 make i18n-check
 
 # 部署
-cd ../deploy
+cd ..
 make build-all
 make start
 make logs

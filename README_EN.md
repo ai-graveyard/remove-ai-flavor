@@ -138,9 +138,8 @@ For local sign-in testing, set `AUTH_IS_DEBUG=True` and `AUTH_DEBUG_CODE=888888`
 ## Docker deployment
 
 ```bash
-cd deploy
-cp .env.example .env
-# Replace all sample secrets, passwords, domains, and model settings.
+cp deploy/.env.example deploy/.env
+# Replace all sample secrets, passwords, domains, and model settings in deploy/.env.
 
 make build-all
 make start

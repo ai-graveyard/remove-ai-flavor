@@ -138,9 +138,8 @@ make dev-web
 ## Docker 部署
 
 ```bash
-cd deploy
-cp .env.example .env
-# 编辑 .env，替换所有示例密钥、密码、域名和模型配置
+cp deploy/.env.example deploy/.env
+# 编辑 deploy/.env，替换所有示例密钥、密码、域名和模型配置
 
 make build-all
 make start

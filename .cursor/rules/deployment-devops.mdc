@@ -8,14 +8,13 @@ description: Docker Compose、数据库迁移和生产部署规范
 
 - 完整部署位于 `deploy/`，没有独立 `deploy-test/` 目录。
 - 测试环境通过 `deploy/.env.test.example` 和后缀变量隔离。
-- 根 Makefile 将常规部署命令转发到 `deploy/makefile`，并提供 `deploy-ci` 自动部署入口。
+- 所有部署目标统一定义在根 Makefile 中，`deploy/` 只保存 Compose、Nginx 和环境配置。
 - 对外入口默认是 Nginx `8081`；Web 容器为 `3000`，API 容器为 `8000`。
 
 ## 命令
 
 ```bash
-cd deploy
-cp .env.example .env
+cp deploy/.env.example deploy/.env
 make build-all
 make start
 make logs
@@ -36,9 +35,9 @@ make deploy-ci
 ## 迁移与健康检查
 
 ```bash
-docker compose exec api alembic upgrade head
-docker compose exec api wget -qO- http://127.0.0.1:8000/health
-docker compose ps
+docker compose --project-directory deploy -f deploy/docker-compose.yaml exec api alembic upgrade head
+docker compose --project-directory deploy -f deploy/docker-compose.yaml exec api wget -qO- http://127.0.0.1:8000/health
+docker compose --project-directory deploy -f deploy/docker-compose.yaml ps
 ```
 
 应用启动时的 `create_all` 不能替代 Alembic。升级前备份 PostgreSQL，并在测试环境验证迁移和回滚。

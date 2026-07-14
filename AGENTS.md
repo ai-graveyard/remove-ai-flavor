@@ -39,14 +39,14 @@ make test
 make lint
 
 # 前端
-cd web
+cd ../web
 pnpm install
 pnpm test
 pnpm build
 make i18n-check
 
 # 部署
-cd deploy
+cd ..
 make build-all
 make start
 make logs
@@ -84,7 +84,7 @@ make logs
 ## 文档与安全
 
 - 行为、配置、端口或命令变化时，同步更新根 README、对应子目录 README 和 `.env.example`。
-- 修改自动部署时同步检查 Workflow、根 Makefile、`deploy/makefile` 和部署指南。
+- 修改自动部署时同步检查 Workflow、根 Makefile 和部署指南。
 - 历史计划、设计记录和 stop-slop 上游参考资料不是常规产品文档，不做无关重写。
 - 不提交 `.env`、凭据、数据库数据、日志转储或个人信息。
 - 生产示例必须关闭 `AUTH_IS_DEBUG` 与 `API_RELOAD`，并提醒使用强密钥、HTTPS 和网络隔离。
