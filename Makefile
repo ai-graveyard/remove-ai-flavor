@@ -53,9 +53,11 @@ build-web:
 	@echo "Building web Docker image: $(WEB_IMAGE):$(VERSION)..."
 	@echo "Using NEXT_PUBLIC_DOCS_URL: $(NEXT_PUBLIC_DOCS_URL)"
 	@echo "Using NEXT_PUBLIC_API_URL: $(NEXT_PUBLIC_API_URL)"
+	@echo "Using NEXT_PUBLIC_APP_URL: $(NEXT_PUBLIC_APP_URL)"
 	docker build \
 		--build-arg NEXT_PUBLIC_DOCS_URL=$(NEXT_PUBLIC_DOCS_URL) \
 		--build-arg NEXT_PUBLIC_API_URL=$(NEXT_PUBLIC_API_URL) \
+		--build-arg NEXT_PUBLIC_APP_URL=$(NEXT_PUBLIC_APP_URL) \
 		-t $(WEB_IMAGE):$(VERSION) web
 	@echo "Web Docker image built successfully: $(WEB_IMAGE):$(VERSION)"
 

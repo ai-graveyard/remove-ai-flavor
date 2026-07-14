@@ -95,6 +95,7 @@ The Docker image uses Next.js standalone output:
 ```bash
 docker build \
   --build-arg NEXT_PUBLIC_API_URL=https://example.com \
+  --build-arg NEXT_PUBLIC_APP_URL=https://example.com \
   --build-arg NEXT_PUBLIC_DOCS_URL=https://example.com/api/v1/docs \
   -t remove-ai-flavor-web:local .
 ```

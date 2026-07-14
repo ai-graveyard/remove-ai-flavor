@@ -54,6 +54,23 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // 将裸域名永久重定向到统一的 www canonical 域名。
+  async redirects() {
+    return [
+      {
+        source: '/:path*',
+        has: [
+          {
+            type: 'host',
+            value: 'removeaiflavor.com',
+          },
+        ],
+        destination: 'https://www.removeaiflavor.com/:path*',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 const withNextIntl = createNextIntlPlugin();

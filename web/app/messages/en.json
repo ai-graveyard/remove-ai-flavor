@@ -5,6 +5,18 @@
     "slogan": "Make AI text more human-like",
     "poweredBy": "Powered by"
   },
+  "seo": {
+    "home": {
+      "title": "Make AI Text Sound Human | Remove AI Flavor",
+      "description": "Improve AI-generated text online by reducing stiff phrasing and repetitive patterns, so articles, emails, and social posts read more naturally.",
+      "heading": "Make AI text sound more human",
+      "intro": "Paste AI-generated text to reduce stiff wording, repetitive sentence patterns, and formulaic phrasing."
+    },
+    "login": {
+      "title": "Log in",
+      "description": "Log in to Remove AI Flavor to continue managing and improving your text."
+    }
+  },
   "common": {
     "userTypes": {
       "user": "User",

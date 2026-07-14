@@ -5,6 +5,18 @@
     "slogan": "让 AI 文本更像人写的",
     "poweredBy": "技术支持"
   },
+  "seo": {
+    "home": {
+      "title": "AI 文本去 AI 味工具 | Remove AI Flavor",
+      "description": "免费在线优化 AI 生成文本，减少生硬表达和模板化措辞，让文章、邮件和社交媒体内容读起来更自然。",
+      "heading": "让 AI 文本更像人写的",
+      "intro": "粘贴需要优化的 AI 生成文本，即可减少生硬表达、重复句式和模板化措辞。"
+    },
+    "login": {
+      "title": "登录",
+      "description": "登录 Remove AI Flavor，继续管理和优化你的文本。"
+    }
+  },
   "common": {
     "userTypes": {
       "user": "用户",

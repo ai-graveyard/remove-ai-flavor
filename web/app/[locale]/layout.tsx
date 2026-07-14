@@ -1,6 +1,6 @@
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
 import { notFound } from 'next/navigation';
-import { setRequestLocale } from 'next-intl/server';
+import { getTranslations, setRequestLocale } from 'next-intl/server';
 import type { Metadata } from "next";
 import "@/app/globals.css";
 import { routing } from '@/i18n/routing';
@@ -10,13 +10,33 @@ import { Toaster } from "sonner";
 import { GlobalChatStateProvider } from '@/hooks/use-global-chat-state';
 import { GlobalDataCacheProvider } from '@/hooks/use-global-data-cache';
 import { GlobalUserDataProvider } from '@/hooks/use-global-user-data';
+import { getSiteUrl, SITE_NAME } from '@/lib/site';
 
+/**
+ * 生成全站共享的本地化 metadata。
+ *
+ * 首页 canonical、hreflang 和社交卡片由首页自身补充，避免子路由错误继承首页地址。
+ */
 export async function generateMetadata({ params }: { params: Promise<{ locale: string }> }): Promise<Metadata> {
   const { locale } = await params;
-  const messages = (await import(`@/app/messages/${locale}.json`)).default;
+  const t = await getTranslations({ locale, namespace: 'seo.home' });
+
   return {
-    title: messages.HOME_PAGE_TITLE,
-    description: messages.HOME_PAGE_DESCRIPTION,
+    metadataBase: getSiteUrl(),
+    title: {
+      default: t('title'),
+      template: `%s | ${SITE_NAME}`,
+    },
+    description: t('description'),
+    applicationName: SITE_NAME,
+    authors: [{ name: SITE_NAME }],
+    creator: SITE_NAME,
+    publisher: SITE_NAME,
+    formatDetection: {
+      email: false,
+      address: false,
+      telephone: false,
+    },
   };
 }
 
