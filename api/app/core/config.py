@@ -66,8 +66,8 @@ class Settings:
     RESEND_API_KEY: str = os.getenv("RESEND_API_KEY")
     RESEND_MAIL_FROM: str = os.getenv("RESEND_MAIL_FROM")
 
-    # openai
-    AGENT_SOURCE: str = os.getenv("AGENT_SOURCE", "llm")  # Agent 来源类型: llm/dify/fastgpt/coze/custom
+    # Agno OpenAI-compatible 模型配置
+    AGENT_SOURCE: str = os.getenv("AGENT_SOURCE", "llm")  # 展示来源: llm/fastgpt/coze/custom
     AGENT_API_KEY: str = os.getenv("AGENT_API_KEY")
     AGENT_BASE_URL: str = os.getenv("AGENT_BASE_URL", "https://api.openai.com/v1/chat/completions")
     AGENT_MODEL_NAME: str = os.getenv("AGENT_MODEL_NAME", "gpt-4.1-mini")

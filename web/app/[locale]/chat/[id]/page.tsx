@@ -10,6 +10,7 @@ import SharedLayout from '@/components/web/layout/shared-layout'
 
 import { useGlobalDataCache } from '@/hooks/use-global-data-cache'
 import { saveExistingChatState } from '@/util/chat-state'
+import { getValidAccessToken } from '@/util/token'
 import type { Chat } from '@/app/[locale]/types'
 
 /**
@@ -21,6 +22,7 @@ function ChatPageContent() {
   const [notFoundError, setNotFoundError] = useState(false)
   const [initialMessage, setInitialMessage] = useState<string>('')
   const [isNewChat, setIsNewChat] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   
   const router = useRouter()
   const params = useParams()
@@ -30,6 +32,19 @@ function ChatPageContent() {
   
   // 从 URL 参数获取聊天 ID 和初始消息
   const chatId = params.id ? parseInt(params.id as string, 10) : null
+
+  // 在读取任何聊天数据前完成认证，避免访客触发受保护接口。
+  useEffect(() => {
+    const checkAuthentication = async () => {
+      const accessToken = await getValidAccessToken()
+      setIsAuthenticated(Boolean(accessToken))
+      if (!accessToken) {
+        router.push('/login')
+      }
+    }
+
+    checkAuthentication()
+  }, [router])
   
   // 检查 URL 参数中的初始消息
   useEffect(() => {
@@ -55,6 +70,10 @@ function ChatPageContent() {
 
   // 初始化页面数据 - 避免无限循环
   useEffect(() => {
+    if (isAuthenticated !== true) {
+      return
+    }
+
     // 防止重复初始化同一个聊天
     if (initializingRef.current || lastChatIdRef.current === chatId) {
       return
@@ -134,7 +153,7 @@ function ChatPageContent() {
 
     initializePage()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId]) // 只依赖 chatId
+  }, [chatId, isAuthenticated])
 
   // 当 chatId 变化时重置状态
   useEffect(() => {

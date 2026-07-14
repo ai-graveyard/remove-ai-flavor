@@ -252,25 +252,29 @@ export default function CreateAgentModal({
     switch (source) {
       case 'llm':
         return 'https://api.openai.com/v1/chat/completions';
-      case 'dify':
-        return 'https://api.dify.ai/v1/chat-messages';
       case 'fastgpt':
         return 'https://api.fastgpt.ai/api/v1/chat/completions';
       case 'coze':
-        return 'https://api.coze.com/open_api/v2/chat';
+        // Coze 原生接口不兼容 OpenAI 协议，需由管理员填写兼容网关地址。
+        return '';
       case 'custom':
-        return 'https://api.openai.com/v1/chat/completions';
+        return '';
       default:
         return '';
     }
   };
 
-  const handleSourceChange = (source: 'llm' | 'dify' | 'fastgpt' | 'coze' | 'custom') => {
+  /**
+   * 切换 Agent 展示来源并填充对应的 OpenAI-compatible 预设地址。
+   *
+   * @param source - 后台支持的 Agent 来源。
+   */
+  const handleSourceChange = (source: AgentSource) => {
     const presetUrl = getSourcePresetUrls(source);
     setFormData(prev => ({
       ...prev,
       source,
-      api_url: presetUrl || prev.api_url,
+      api_url: presetUrl,
     }));
   };
 
@@ -318,11 +322,10 @@ export default function CreateAgentModal({
             <select
               id="source"
               value={formData.source}
-              onChange={(e) => handleSourceChange(e.target.value as 'llm' | 'dify' | 'fastgpt' | 'coze' | 'custom')}
+              onChange={(e) => handleSourceChange(e.target.value as AgentSource)}
               className="w-full p-2 border border-border rounded-md bg-background"
             >
               <option value="llm">{t('admin.agents.sources.llm')}</option>
-              <option value="dify">{t('admin.agents.sources.dify')}</option>
               <option value="fastgpt">{t('admin.agents.sources.fastgpt')}</option>
               <option value="coze">{t('admin.agents.sources.coze')}</option>
               <option value="custom">{t('admin.agents.sources.custom')}</option>

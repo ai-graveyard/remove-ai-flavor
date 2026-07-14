@@ -155,7 +155,6 @@ export default function AgentsManagementPage() {
             >
               <option value="">{t('admin.agents.allSources')}</option>
               <option value="llm">{t('source.llm')}</option>
-              <option value="dify">{t('source.dify')}</option>
               <option value="fastgpt">{t('source.fastgpt')}</option>
               <option value="coze">{t('source.coze')}</option>
               <option value="custom">{t('source.custom')}</option>

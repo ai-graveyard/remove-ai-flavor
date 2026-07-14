@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePathname } from '@/i18n/navigation'
 import { useTranslations } from 'next-intl'
@@ -17,6 +17,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar"
+import { Button } from "@/components/ui/button"
 import LanguageSwitchButton from "@/components/common/language-switch-button"
 import { AppSidebar } from "@/components/web/sidebar/app-sidebar"
 import ThemeToggleButton from "@/components/common/theme-toggle-button"
@@ -47,6 +48,8 @@ export default function SharedLayout({ children, breadcrumbTitle }: SharedLayout
   const pathname = usePathname()
   const t = useTranslations()
   const { chats, fetchChats } = useGlobalDataCache()
+  // `null` 表示仍在检查 token，避免访客触发任何认证接口。
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   
   // 从路径中获取当前聊天 ID
   const getCurrentChatId = (): number | null => {
@@ -73,22 +76,24 @@ export default function SharedLayout({ children, breadcrumbTitle }: SharedLayout
   // 首页默认折叠 sidebar，聊天页面默认展开
   const defaultSidebarOpen = !isHomePage
 
-  // 检查用户认证
+  // 首页允许访客访问，其他业务页面仍然要求登录。
   useEffect(() => {
     const checkToken = async () => {
       const accessToken = await getValidAccessToken()
+      setIsAuthenticated(Boolean(accessToken))
       if (!accessToken) {
-        router.push('/login')
-        return
+        if (!isHomePage) {
+          router.push('/login')
+        }
       }
     }
     checkToken()
-  }, [router])
+  }, [isHomePage, router])
 
-  // 初始化时获取聊天列表
+  // 只有登录用户才初始化聊天列表，访客不能访问聊天数据。
   useEffect(() => {
     const initializeData = async () => {
-      if (!chats) {
+      if (isAuthenticated && !chats) {
         try {
           await fetchChats()
         } catch (error) {
@@ -98,25 +103,40 @@ export default function SharedLayout({ children, breadcrumbTitle }: SharedLayout
     }
     
     initializeData()
-  }, [chats, fetchChats])
+  }, [chats, fetchChats, isAuthenticated])
+
+  // 受保护页面在认证完成前不挂载子组件，避免提前发起认证请求。
+  if (!isHomePage && isAuthenticated !== true) {
+    return (
+      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+        {t('editor.loading')}
+      </div>
+    )
+  }
 
   return (
     <SidebarProvider defaultOpen={defaultSidebarOpen}>
-      <AppSidebar
-        chats={chats || []}
-        onSelectChat={(chat: Chat) => {
-          router.push(`/chat/${chat.id}`)
-        }}
-        currentChatId={currentChatId || undefined}
-      />
+      {isAuthenticated && (
+        <AppSidebar
+          chats={chats || []}
+          onSelectChat={(chat: Chat) => {
+            router.push(`/chat/${chat.id}`)
+          }}
+          currentChatId={currentChatId || undefined}
+        />
+      )}
       <SidebarInset>
         <header className="sticky top-0 z-20 bg-background border-b flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className="flex items-center gap-2 px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator
-              orientation="vertical"
-              className="mr-2 data-[orientation=vertical]:h-4"
-            />
+            {isAuthenticated && (
+              <>
+                <SidebarTrigger className="-ml-1" />
+                <Separator
+                  orientation="vertical"
+                  className="mr-2 data-[orientation=vertical]:h-4"
+                />
+              </>
+            )}
             <Breadcrumb>
               <BreadcrumbList>
                 <BreadcrumbItem className="hidden md:block text-lg">
@@ -128,7 +148,13 @@ export default function SharedLayout({ children, breadcrumbTitle }: SharedLayout
             </Breadcrumb>
           </div>
           <div className="ml-auto justify-end pr-4 flex items-center gap-2">
-            <UpgradePlanDialog />
+            {isAuthenticated ? (
+              <UpgradePlanDialog />
+            ) : isAuthenticated === false ? (
+              <Button size="sm" onClick={() => router.push('/login')}>
+                {t('editor.actions.login')}
+              </Button>
+            ) : null}
             <ThemeToggleButton />
             <LanguageSwitchButton />
           </div>

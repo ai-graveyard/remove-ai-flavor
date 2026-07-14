@@ -52,11 +52,14 @@ export class MessageConverter {
 
   /**
    * 将 AI SDK 消息转换为数据库消息格式
+   *
+   * @param uiMessage - 包含文本或工具调用 part 的 AI SDK 消息。
+   * @returns 可用于保存到数据库的消息字段。
    */
   static toDbMessage(uiMessage: ExtendedUIMessage): Partial<Message> {
     const textContent = uiMessage.parts
-      .filter(part => part.type === 'text')
-      .map(part => part.text)
+      // AI SDK 的 part 是联合类型，显式分支可避免工具 part 被当作文本读取。
+      .map(part => part.type === 'text' ? part.text : '')
       .join('')
 
     return {
@@ -90,7 +93,7 @@ export interface Chat {
 /**
  * Agent 来源类型
  */
-export type AgentSource = 'llm' | 'dify' | 'fastgpt' | 'coze' | 'custom'
+export type AgentSource = 'llm' | 'fastgpt' | 'coze' | 'custom'
 
 /**
  * 会员类型

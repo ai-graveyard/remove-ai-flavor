@@ -1,24 +1,20 @@
+import asyncio
 from functools import wraps
-import traceback
 from typing import Tuple, Dict
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 
-from app.agents.dify import (
-    create_dify_response,
-    create_dify_response_stream,
-    test_dify_connection,
-)
-from app.agents.llm import (
-    create_llm_response,
-    create_llm_response_stream,
-    test_agent_connection,
+from app.agents.agno import (
+    create_agno_response,
+    create_agno_response_stream,
     estimate_conversation_tokens,
+    snapshot_agent_config,
+    test_agno_connection,
 )
 from app.core.i18n import get_message
-from app.crud.agent import get_active_agents, get_agent_detail
+from app.crud.agent import get_accessible_agent, get_active_agents, get_agent_detail
 from app.crud.chat import (
     create_chat,
     get_all_chats,
@@ -29,8 +25,8 @@ from app.crud.chat import (
 from app.crud.message import create_message, get_all_messages, update_message_content
 from app.db.base import get_session
 from app.dependencies.db import LangDep, SessionDep, UserDep
-from app.models.agent import Agent, AgentSource
-from app.schemas.agent import Agent as AgentSchema
+from app.models.agent import Agent
+from app.schemas.agent import AgentPublic as AgentSchema
 from app.schemas.chat import ChatCreate, ChatOut, ChatUpdate
 from app.schemas.message import MessageCreate, MessageOut, MessageRole
 from app.services.membership_service import MembershipService
@@ -132,16 +128,14 @@ def ensure_message_logging(func):
         try:
             return await func(*args, **kwargs)
         except Exception as e:
-            # 记录详细的错误信息
-            error_details = {
-                'function': func.__name__,
-                'error': str(e),
-                'traceback': traceback.format_exc(),
-                'user_id': user.id if user else None,
-                'chat_id': message_in.chat_id if message_in else None,
-                'message_content_length': len(message_in.content) if message_in else 0
-            }
-            MessageLogger.log_api_error(func.__name__, user.id if user else 0, message_in.chat_id if message_in else 0, str(e))
+            # 日志只记录异常类型，避免上游响应体、URL 或凭据进入普通日志。
+            error_name = type(e).__name__
+            MessageLogger.log_api_error(
+                func.__name__,
+                user.id if user else 0,
+                message_in.chat_id if message_in else 0,
+                error_name,
+            )
             
             # 如果是消息创建相关的异常，确保用户消息已被记录
             if message_in and session and user and hasattr(message_in, 'chat_id'):
@@ -159,7 +153,7 @@ def ensure_message_logging(func):
                         error_reply = create_message(
                             MessageCreate(
                                 chat_id=message_in.chat_id,
-                                content=f"抱歉，处理您的消息时发生了错误: {str(e)}",
+                                content=get_message("agent_response_failed"),
                                 role=MessageRole.ASSISTANT,
                             ),
                             session,
@@ -167,7 +161,12 @@ def ensure_message_logging(func):
                         MessageLogger.log_emergency_save(error_reply.id, message_in.chat_id, "API异常时创建错误回复")
                         
                 except Exception as save_error:
-                    MessageLogger.log_api_error("emergency_save", user.id if user else 0, message_in.chat_id if message_in else 0, str(save_error))
+                    MessageLogger.log_api_error(
+                        "emergency_save",
+                        user.id if user else 0,
+                        message_in.chat_id if message_in else 0,
+                        type(save_error).__name__,
+                    )
             
             # 重新抛出原始异常
             raise e
@@ -177,65 +176,50 @@ def ensure_message_logging(func):
 
 async def create_agent_response(messages: list[MessageOut], agent: Agent, user_id: int, chat_id: int, session=None) -> Tuple[str, Dict[str, int]]:
     """
-    根据 agent 类型创建响应
+    通过统一 Agno 适配层创建非流式响应。
 
-    Args:
-        messages: 消息历史
-        agent: Agent 配置
-        user_id: 用户ID
-        chat_id: 对话ID
-        session: 数据库会话
+    参数:
+    - messages: 项目消息列表。
+    - agent: 数据库 Agent 配置。
+    - user_id: 用户 ID。
+    - chat_id: 对话 ID。
+    - session: 保留的兼容参数，Agno 不建立独立数据库会话。
 
-    Returns:
-        Tuple[str, Dict[str, int]]: 生成的响应内容和 token 使用统计
+    返回:
+    - Tuple[str, Dict[str, int]]: 生成正文和 token 使用统计。
     """
-    if agent.source == AgentSource.DIFY:
-        # 使用 Dify API，现在支持 token 统计
-        return await create_dify_response(messages, agent, user_id, chat_id, session)
-    else:
-        # 默认使用 LLM 处理
-        return create_llm_response(messages, agent)
+    return await create_agno_response(messages, agent, user_id, chat_id)
 
 
 async def create_agent_response_stream(messages: list[MessageOut], agent: Agent, user_id: int, chat_id: int, session=None):
     """
-    根据 agent 类型创建流式响应
+    通过统一 Agno 适配层创建流式响应。
 
-    Args:
-        messages: 消息历史
-        agent: Agent 配置
-        user_id: 用户ID
-        chat_id: 对话ID
-        session: 数据库会话
+    参数:
+    - messages: 项目消息列表。
+    - agent: 数据库 Agent 配置。
+    - user_id: 用户 ID。
+    - chat_id: 对话 ID。
+    - session: 保留的兼容参数，Agno 不建立独立数据库会话。
 
-    Yields:
-        Tuple[str, Optional[Dict[str, int]]]: 流式响应的文本块和可选的 token 统计
+    生成:
+    - Tuple[str, Optional[Dict[str, int]]]: 正文块和最终 token 统计。
     """
-    if agent.source == AgentSource.DIFY:
-        # 使用 Dify 流式 API，现在支持 token 统计
-        async for chunk_data in create_dify_response_stream(messages, agent, user_id, chat_id, session):
-            yield chunk_data
-    else:
-        # 默认使用 LLM 处理
-        async for chunk_data in create_llm_response_stream(messages, agent):
-            yield chunk_data
+    async for chunk_data in create_agno_response_stream(messages, agent, user_id, chat_id):
+        yield chunk_data
 
 
 async def test_agent_connection_unified(agent: Agent):
     """
-    根据 agent 类型测试连接
+    通过统一 Agno 适配层测试 Agent 连接。
 
-    Args:
-        agent: Agent 配置
+    参数:
+    - agent: 数据库 Agent 配置。
 
-    Returns:
-        测试结果字典
+    返回:
+    - dict: 连接状态、耗时和脱敏详情。
     """
-    if agent.source == AgentSource.DIFY:
-        return await test_dify_connection(agent)
-    else:
-        # 默认使用 LLM 测试
-        return await test_agent_connection(agent)
+    return await test_agno_connection(agent)
 
 
 @chat_router.post("", response_model=ChatOut)
@@ -261,10 +245,17 @@ async def create_chat_api(chat_in: ChatCreate, session: SessionDep, user: UserDe
     异常:
     - 404: agent 不存在或已删除
     """
-    # 验证 agent_id 是否有效
+    membership_service = MembershipService(session)
+    membership_status = membership_service.get_user_membership_status(user.id)
+
+    # 验证 Agent 存在、未删除且满足当前会员等级。
     if chat_in.agent_id:
-        agent = get_agent_detail(session, chat_in.agent_id)
-        if not agent or agent.is_deleted:
+        agent = get_accessible_agent(
+            session,
+            chat_in.agent_id,
+            membership_status.membership_type,
+        )
+        if not agent:
             error_msg = get_message("agent_not_found_or_inactive", lang)
             raise HTTPException(status_code=404, detail=error_msg)
     else:
@@ -275,7 +266,6 @@ async def create_chat_api(chat_in: ChatCreate, session: SessionDep, user: UserDe
     chat = create_chat(chat_in, session, user)
 
     # 记录新聊天的使用情况
-    membership_service = MembershipService(session)
     membership_service.record_usage(user.id, chat.id, message_count=0, token_count=0, is_new_chat=True)
 
     # 返回包含 agent 信息的聊天对象
@@ -325,6 +315,23 @@ async def create_chat_message_api(
         MessageLogger.log_api_error("chat_access_check", user_id, message_in.chat_id, "聊天访问被拒绝")
         raise HTTPException(status_code=404, detail=error_msg)
 
+    membership_service = MembershipService(session)
+    membership_status = membership_service.get_user_membership_status(user_id)
+    if not chat.agent_id:
+        error_msg = get_message("agent_not_found", lang)
+        raise HTTPException(status_code=404, detail=error_msg)
+    agent = get_accessible_agent(
+        session,
+        chat.agent_id,
+        membership_status.membership_type,
+    )
+    if not agent:
+        error_msg = get_message("agent_not_found_or_inactive", lang)
+        raise HTTPException(status_code=404, detail=error_msg)
+
+    # 流式生成器会在请求 Session 关闭后继续执行，先冻结所需配置以避免 ORM 延迟加载。
+    runtime_agent = snapshot_agent_config(agent)
+
     # 获取历史消息用于 token 预估
     messages = get_all_messages(message_in.chat_id, session)
     messages = [MessageOut.model_validate(m) for m in messages]
@@ -333,7 +340,6 @@ async def create_chat_message_api(
     estimated_tokens = estimate_conversation_tokens(messages, message_in.content)
     
     # 会员限制检查（包含 token 预估）
-    membership_service = MembershipService(session)
     can_send, limit_message = membership_service.can_user_send_message(
         user_id, message_in.chat_id, lang, estimated_tokens
     )
@@ -347,18 +353,14 @@ async def create_chat_message_api(
     messages.append(user_message)
     MessageLogger.log_user_message_saved(user_message.id, message_in.chat_id)
 
-    if chat.agent_id:
-        agent = get_agent_detail(session, chat.agent_id)
-    else:
-        error_msg = get_message("agent_not_found", lang)
-        raise HTTPException(status_code=404, detail=error_msg)
-
     if not stream:
         # 非流式模式 - 一次性生成完整回复
         MessageLogger.log_ai_response_start(chat.agent_id, False)
         assistant_message = None
         try:
-            llm_response_content, usage_info = await create_agent_response(messages, agent, user_id, chat.id, session)
+            llm_response_content, usage_info = await create_agent_response(
+                messages, runtime_agent, user_id, chat.id, session
+            )
             
             # 创建并保存AI回复消息，包含 token 统计信息
             assistant_message = create_message(
@@ -382,9 +384,9 @@ async def create_chat_message_api(
             return [user_message, assistant_message]
             
         except Exception as e:
-            MessageLogger.log_ai_response_error(str(e), message_in.chat_id)
+            MessageLogger.log_ai_response_error(type(e).__name__, message_in.chat_id)
             # 即使AI回复失败，也要创建一个错误消息记录
-            error_content = f"抱歉，AI回复生成失败: {str(e)}"
+            error_content = get_message("agent_response_failed", lang)
             assistant_message = create_message(
                 MessageCreate(
                     chat_id=message_in.chat_id,
@@ -433,7 +435,7 @@ async def create_chat_message_api(
                 final_usage_info = None
                 
                 # 使用统一的流式响应接口
-                async for chunk_data in create_agent_response_stream(messages, agent, user_id, chat.id, None):
+                async for chunk_data in create_agent_response_stream(messages, runtime_agent, user_id, chat.id, None):
                     chunk, usage_info = chunk_data
                     
                     # 如果有内容，累积并输出
@@ -456,7 +458,12 @@ async def create_chat_message_api(
                                 MessageLogger.log_stream_progress(message_id, chunk_count, len(content_acc))
                         except Exception as e:
                             # 增量保存失败不影响流式响应
-                            MessageLogger.log_api_error("stream_incremental_save", user_id, message_in.chat_id, str(e))
+                            MessageLogger.log_api_error(
+                                "stream_incremental_save",
+                                user_id,
+                                message_in.chat_id,
+                                type(e).__name__,
+                            )
                 
                 # 流式响应完成后，保存最终完整内容和 token 统计
                 if message_id:
@@ -479,16 +486,37 @@ async def create_chat_message_api(
                         if final_usage_info:
                             yield f"\n__TOKEN_USAGE__{final_usage_info['prompt_tokens']},{final_usage_info['completion_tokens']},{final_usage_info['total_tokens']}__END__"
                         
+            except asyncio.CancelledError:
+                # 浏览器主动停止生成时保存已收到正文，不附加错误或内部异常信息。
+                if message_id:
+                    with next(get_session()) as cancelled_session:
+                        update_message_content(message_id, content_acc, cancelled_session)
+                        MembershipService(cancelled_session).record_usage(
+                            user_id,
+                            message_in.chat_id,
+                            1,
+                            0,
+                        )
+                        cancelled_session.commit()
+                        MessageLogger.log_emergency_save(
+                            message_id,
+                            message_in.chat_id,
+                            "用户停止生成时保存部分正文",
+                        )
+                raise
             except Exception as e:
-                MessageLogger.log_ai_response_error(str(e), message_in.chat_id)
+                MessageLogger.log_ai_response_error(type(e).__name__, message_in.chat_id)
                 # 如果流式响应出错，至少保存已生成的内容和错误信息
                 if message_id:
                     try:
                         with next(get_session()) as error_session:
                             if content_acc:
-                                error_content = content_acc + f"\n\n[响应中断: {str(e)}]"
+                                error_content = (
+                                    content_acc
+                                    + f"\n\n[{get_message('agent_response_interrupted', lang)}]"
+                                )
                             else:
-                                error_content = f"抱歉，AI回复生成失败: {str(e)}"
+                                error_content = get_message("agent_response_failed", lang)
                             
                             update_message_content(message_id, error_content, error_session)
                             
@@ -500,7 +528,12 @@ async def create_chat_message_api(
                             MessageLogger.log_emergency_save(message_id, message_in.chat_id, "流式响应失败时保存错误信息")
                             MessageLogger.log_usage_recorded(user_id, message_in.chat_id, 0)
                     except Exception as save_error:
-                        MessageLogger.log_api_error("stream_error_save", user_id, message_in.chat_id, str(save_error))
+                        MessageLogger.log_api_error(
+                            "stream_error_save",
+                            user_id,
+                            message_in.chat_id,
+                            type(save_error).__name__,
+                        )
                 
                 # 重新抛出原始异常
                 raise e
@@ -538,8 +571,13 @@ def update_chat_api(
     """
     # 如果更新包含 agent_id，验证其有效性
     if chat_in.agent_id is not None:
-        agent = get_agent_detail(session, chat_in.agent_id)
-        if not agent or agent.is_deleted:
+        membership_status = MembershipService(session).get_user_membership_status(user.id)
+        agent = get_accessible_agent(
+            session,
+            chat_in.agent_id,
+            membership_status.membership_type,
+        )
+        if not agent:
             error_msg = get_message("agent_not_found_or_inactive", lang)
             raise HTTPException(status_code=404, detail=error_msg)
     
@@ -650,14 +688,11 @@ def get_active_agents_api(session: SessionDep, user: UserDep, lang: LangDep) -> 
 async def test_agent_availability(agent_id: int, session: SessionDep, user: UserDep, lang: LangDep):
     """测试 Agent 可用性"""
     # 获取 Agent 详情
-    agent = get_agent_detail(session, agent_id)
+    membership_status = MembershipService(session).get_user_membership_status(user.id)
+    agent = get_accessible_agent(session, agent_id, membership_status.membership_type)
     if not agent:
-        error_msg = get_message("agent_not_found", lang)
+        error_msg = get_message("agent_not_found_or_inactive", lang)
         raise HTTPException(status_code=404, detail=error_msg)
-
-    if agent.is_deleted:
-        error_msg = get_message("agent_deleted", lang)
-        raise HTTPException(status_code=400, detail=error_msg)
 
     # 测试 Agent 连接
     try:
@@ -668,6 +703,6 @@ async def test_agent_availability(agent_id: int, session: SessionDep, user: User
             "response_time": result.get("response_time"),
             "details": result.get("details"),
         }
-    except Exception as e:
+    except Exception:
         error_msg = get_message("agent_test_failed", lang)
-        return {"status": "error", "message": f"{error_msg}: {str(e)}", "details": None}
+        return {"status": "error", "message": error_msg, "details": None}

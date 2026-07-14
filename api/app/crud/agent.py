@@ -14,6 +14,7 @@ from app.schemas.agent import (
     AgentSearchParams,
     AgentUpdate,
 )
+from app.schemas.membership import MembershipType
 
 logger = get_logger(__name__)
 
@@ -76,6 +77,52 @@ def get_agents_with_pagination(session: Session, params: AgentSearchParams) -> A
 def get_agent_detail(session: Session, agent_id: int) -> Optional[Agent]:
     """Get agent detail by id"""
     return session.get(Agent, agent_id)
+
+
+def is_agent_accessible(agent: Agent, user_membership_type: MembershipType | str) -> bool:
+    """
+    判断用户会员等级是否允许使用指定 Agent。
+
+    参数:
+    - agent: 待访问的 Agent。
+    - user_membership_type: 当前用户会员等级。
+
+    返回:
+    - bool: Agent 活跃且用户等级不低于 Agent 要求时返回 True。
+    """
+    if agent.is_deleted:
+        return False
+
+    membership_value = getattr(user_membership_type, "value", user_membership_type)
+    required_value = getattr(agent.required_membership_type, "value", agent.required_membership_type)
+    levels = {
+        MembershipType.FREE.value: 0,
+        MembershipType.MONTHLY.value: 1,
+        MembershipType.YEARLY.value: 2,
+    }
+    return levels.get(str(membership_value), -1) >= levels.get(str(required_value), 99)
+
+
+def get_accessible_agent(
+    session: Session,
+    agent_id: int,
+    user_membership_type: MembershipType | str,
+) -> Optional[Agent]:
+    """
+    按 ID 获取当前会员可使用的活跃 Agent。
+
+    参数:
+    - session: 数据库会话。
+    - agent_id: Agent ID。
+    - user_membership_type: 当前用户会员等级。
+
+    返回:
+    - Optional[Agent]: 有权限时返回 Agent，否则返回 None。
+    """
+    agent = get_agent_detail(session, agent_id)
+    if not agent or not is_agent_accessible(agent, user_membership_type):
+        return None
+    return agent
 
 
 def create_agent(session: Session, agent_data: AgentCreate) -> Agent:
@@ -144,8 +191,6 @@ def get_active_agents(session: Session, user_membership_type: Optional[str] = No
     返回:
     - List[Agent]: 符合条件的 agent 列表
     """
-    from app.schemas.membership import MembershipType
-    
     query = select(Agent).where(Agent.is_deleted == False)
     
     # 根据用户会员等级过滤 agent
@@ -166,37 +211,69 @@ def get_active_agents(session: Session, user_membership_type: Optional[str] = No
     return session.exec(query).all()
 
 
-def create_default_agent(session: Session) -> Agent:
-    """Create default conversation agent if not exists"""
-    # Check if default agent already exists
+def resolve_default_agent_source(source: str) -> Optional[AgentSource]:
+    """
+    解析默认 Agent 的展示来源。
+
+    旧部署可能仍保留 `AGENT_SOURCE=dify`。该来源已经移除，初始化时应跳过
+    默认 Agent 创建，不能把不兼容的 Dify URL 当作 OpenAI-compatible URL。
+
+    参数:
+    - source: 环境变量中的来源字符串。
+
+    返回:
+    - Optional[AgentSource]: 受支持的来源；无效或已移除时返回 None。
+    """
+    try:
+        return AgentSource(source)
+    except ValueError:
+        logger.warning("跳过默认 Agent 创建：AGENT_SOURCE=%s 已不受支持", source)
+        return None
+
+
+def create_default_agent(session: Session) -> Optional[Agent]:
+    """
+    在配置有效且不存在同名活跃记录时创建默认 Agent。
+
+    参数:
+    - session: 数据库会话。
+
+    返回:
+    - Optional[Agent]: 已存在或新建的默认 Agent；配置来源无效时返回 None。
+    """
     existing_agent = session.exec(select(Agent).where(Agent.name == "默认智能体", Agent.is_deleted == False)).first()
 
     if existing_agent:
         logger.info(f"默认智能体已存在: {existing_agent.name}")
-    else:
-        # Default model configuration
-        default_model_conf = {
-            "model": settings.AGENT_MODEL_NAME,
-            "temperature": settings.AGENT_MODEL_TEMPERATURE,
-            "max_tokens": 2048,
-            "top_p": 1.0,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0,
-        }
+        return existing_agent
 
-        default_agent = Agent(
-            name="默认智能体",
-            source=AgentSource(settings.AGENT_SOURCE),
-            api_url=settings.AGENT_BASE_URL,
-            api_key=settings.AGENT_API_KEY,
-            model_conf=default_model_conf,
-            is_think=False,
-            is_stream=True,
-            is_deleted=False,
-        )
+    source = resolve_default_agent_source(settings.AGENT_SOURCE)
+    if source is None:
+        return None
 
-        session.add(default_agent)
-        session.commit()
-        session.refresh(default_agent)
+    # 默认模型参数与后台创建的 Agent 使用同一套 Agno OpenAILike 映射规则。
+    default_model_conf = {
+        "model": settings.AGENT_MODEL_NAME,
+        "temperature": settings.AGENT_MODEL_TEMPERATURE,
+        "max_tokens": 2048,
+        "top_p": 1.0,
+        "frequency_penalty": 0.0,
+        "presence_penalty": 0.0,
+    }
 
-        logger.info(f"默认智能体创建成功: {default_agent.name}")
+    default_agent = Agent(
+        name="默认智能体",
+        source=source,
+        api_url=settings.AGENT_BASE_URL,
+        api_key=settings.AGENT_API_KEY,
+        model_conf=default_model_conf,
+        is_think=False,
+        is_stream=True,
+        is_deleted=False,
+    )
+
+    session.add(default_agent)
+    session.commit()
+    session.refresh(default_agent)
+    logger.info(f"默认智能体创建成功: {default_agent.name}")
+    return default_agent

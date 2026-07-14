@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react'
 import { getUserProfile } from '@/util/auth'
 import { getMembershipPlans, getUserOrders, getUserMembershipStatus } from '@/util/user-api'
+import { getValidAccessToken } from '@/util/token'
 import type { UserProfile } from '@/util/auth'
 import type { MembershipPlan, MembershipStatus } from '@/app/[locale]/admin/types'
 import type { OrderResponse } from '@/util/user-api'
@@ -199,20 +200,28 @@ export function GlobalUserDataProvider({ children }: { children: ReactNode }) {
     ])
   }, [refreshUserProfile, refreshMembershipStatus, refreshMembershipPlans, refreshUserOrders])
 
-  // 初始化时加载数据 - 添加防重复调用机制
+  // 初始化时仅为登录用户加载资料、会员和订单数据。
   useEffect(() => {
-    // 检查是否已经有数据，避免重复加载
-    const hasUserData = userProfile !== null
-    const hasMembershipData = membershipStatus !== null
-    const hasPlansData = membershipPlans.length > 0
-    const hasOrdersData = userOrders.length > 0
-    
-    // 如果所有数据都已存在，跳过初始化
-    if (hasUserData && hasMembershipData && hasPlansData && hasOrdersData) {
-      return
+    const initializeUserData = async () => {
+      const accessToken = await getValidAccessToken()
+      if (!accessToken) {
+        return
+      }
+
+      // Provider 首次挂载时统一加载全部登录用户数据。
+      await refreshAllData()
     }
-    
-    refreshAllData()
+
+    initializeUserData()
+    const handleUserLoggedIn = () => {
+      // 登录页与 Provider 共享布局时不会重新挂载，需要主动刷新数据。
+      void initializeUserData()
+    }
+    window.addEventListener('user-logged-in', handleUserLoggedIn)
+
+    return () => {
+      window.removeEventListener('user-logged-in', handleUserLoggedIn)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // 只在组件挂载时执行一次
 

@@ -58,8 +58,8 @@ export default function DeleteAgentModal({ agent, onClose, onAgentUpdated }: Del
 
   const getSourceText = (source: string) => {
     switch (source) {
-      case 'dify':
-        return t('source.dify');
+      case 'llm':
+        return t('source.llm');
       case 'fastgpt':
         return t('source.fastgpt');
       case 'coze':

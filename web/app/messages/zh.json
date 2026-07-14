@@ -110,7 +110,8 @@
       "backToLogin": "返回登录",
       "dontHaveAccount": "还没有账户？",
       "registerNow": "立即注册",
-      "backToLoginFromReset": "返回登录"
+      "backToLoginFromReset": "返回登录",
+      "exploreAsGuest": "随便看看"
     },
     "admin": {
       "title": "RAIF - 管理后台",
@@ -379,7 +380,6 @@
       },
       "sources": {
         "llm": "LLM",
-        "dify": "Dify",
         "fastgpt": "FastGPT",
         "coze": "Coze",
         "custom": "自定义"
@@ -544,7 +544,6 @@
   },
   "source": {
     "llm": "LLM",
-    "dify": "Dify",
     "fastgpt": "FastGPT",
     "coze": "Coze",
     "custom": "自定义"
@@ -685,7 +684,7 @@
   },
   "editor": {
     "title": "文本编辑器",
-    "workspace": "工作台",
+    "newTask": "新建",
     "originalText": "原始文本",
     "optimizedText": "优化后文本",
     "selectAgent": "智能体",
@@ -709,7 +708,8 @@
       "collapse": "折叠",
       "expand": "展开",
       "stop": "停止",
-      "initializing": "初始化中..."
+      "initializing": "初始化中...",
+      "login": "登录"
     },
     "stats": {
       "characters": "字符数",
@@ -732,7 +732,13 @@
       "chatLocked": "有其他对话正在进行中，请等待完成",
       "generateCancelled": "已取消优化",
       "agentSwitched": "智能体已切换",
-      "agentSwitchFailed": "切换智能体失败"
+      "agentSwitchFailed": "切换智能体失败",
+      "guestRemaining": "游客还可免费使用 {count} 次",
+      "guestLimitReached": "游客免费次数已用完，请登录后继续使用",
+      "guestStorageUnavailable": "浏览器未开放本地存储，无法使用游客模式",
+      "newTaskConfirmTitle": "新建优化任务",
+      "newTaskConfirm": "当前内容将被清空，确定新建优化任务吗？",
+      "newTaskGenerating": "正在生成内容，请先停止后再新建任务"
     }
   },
   "order": {

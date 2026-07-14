@@ -97,8 +97,6 @@ export const AgentRow = React.memo(function AgentRow({
     switch (source) {
       case 'llm':
         return t('admin.agents.sources.llm')
-      case 'dify':
-        return t('admin.agents.sources.dify')
       case 'fastgpt':
         return t('admin.agents.sources.fastgpt')
       case 'coze':
@@ -149,7 +147,6 @@ export const AgentRow = React.memo(function AgentRow({
             className="w-full text-sm border border-border rounded px-2 py-1 bg-background"
           >
             <option value="llm">{t('source.llm')}</option>
-            <option value="dify">{t('source.dify')}</option>
             <option value="fastgpt">{t('source.fastgpt')}</option>
             <option value="coze">{t('source.coze')}</option>
             <option value="custom">{t('source.custom')}</option>

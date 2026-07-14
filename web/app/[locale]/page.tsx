@@ -1,34 +1,25 @@
 'use client'
 
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense } from 'react'
 
 import RemoveFlavorEditor from '@/components/web/editor/remove-flavor-editor'
 import SharedLayout from '@/components/web/layout/shared-layout'
 
-import { getValidAccessToken } from '@/util/token'
-
 /**
- * 主页面内容组件
+ * 主页面内容组件，允许登录用户和访客进入文本优化工作台。
  */
 function HomePageContent() {
-  const router = useRouter()
-
-  // 检查用户认证
-  useEffect(() => {
-    const checkToken = async () => {
-      const accessToken = await getValidAccessToken()
-      if (!accessToken) {
-        router.push('/login')
-        return
-      }
-    }
-    checkToken()
-  }, [router])
-
   return (
     <SharedLayout>
-      <RemoveFlavorEditor />
+      <Suspense
+        fallback={
+          <div className="flex flex-1 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          </div>
+        }
+      >
+        <RemoveFlavorEditor />
+      </Suspense>
     </SharedLayout>
   )
 }

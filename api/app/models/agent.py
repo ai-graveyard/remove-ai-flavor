@@ -8,17 +8,23 @@ from app.schemas.membership import MembershipType
 
 
 class AgentSource(str, Enum):
-    """Agent source type"""
+    """Agent 来源类型，所有来源统一通过 Agno OpenAILike 执行。"""
 
     LLM = "llm"
-    DIFY = "dify"
     FASTGPT = "fastgpt"
     COZE = "coze"
     CUSTOM = "custom"
 
 
 class Agent(SQLModel, table=True):
-    """Agent model"""
+    """
+    Agent 模型配置。
+
+    业务规则:
+    - 来源字段只用于后台展示和 API URL 预设。
+    - 所有模型请求统一交给 Agno OpenAILike 适配层。
+    - API 密钥仅供服务端调用，不应写入日志。
+    """
 
     id: Optional[int] = Field(default=None, primary_key=True)
 

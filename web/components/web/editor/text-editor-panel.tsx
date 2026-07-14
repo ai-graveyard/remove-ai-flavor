@@ -158,7 +158,7 @@ export function TextEditorPanel({
       {/* 折叠状态 */}
       {isCollapsed ? (
         <div className="flex flex-col items-center h-full bg-muted/30 border-r">
-          <div className="px-4 py-3 border-b bg-muted/30 w-full flex items-center justify-center">
+          <div className="flex h-16 w-full items-center justify-center border-b bg-muted/30 px-4">
             <Button
               variant="ghost"
               size="icon"
@@ -181,7 +181,7 @@ export function TextEditorPanel({
       ) : (
         <>
           {/* 标题栏 */}
-          <div className="flex items-center justify-between px-3 py-3 border-b bg-muted/30">
+          <div className="flex h-16 items-center justify-between border-b bg-muted/30 px-3">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-semibold">{title}</h2>
               {/* 原始文本面板显示 Agent 选择器 */}

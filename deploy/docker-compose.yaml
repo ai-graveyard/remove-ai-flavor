@@ -1,3 +1,5 @@
+name: ${CONTAINER_PREFIX:-remove-ai-flavor}-${CONTAINER_SUFFIX}
+
 services:
   # API service
   api:

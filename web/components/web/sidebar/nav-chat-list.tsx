@@ -197,7 +197,7 @@ export function NavChatList({ chats, onSelectChat, currentChatId }: { chats: Cha
           }}
         >
           {/* 内容区域 */}
-          <div className="relative w-full px-3 py-2.5">
+          <div className="relative w-full px-3 pb-2 pt-[9px]">
             {/* 主要信息行：标题 + 右上角区域 */}
             <div className="flex w-full items-center gap-2 mb-1 overflow-hidden">
               <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">

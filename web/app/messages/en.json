@@ -110,7 +110,8 @@
       "backToLogin": "Back to Login",
       "dontHaveAccount": "Don't have an account?",
       "registerNow": "Register Now",
-      "backToLoginFromReset": "Back to Login"
+      "backToLoginFromReset": "Back to Login",
+      "exploreAsGuest": "Explore as guest"
     },
     "admin": {
       "title": "RAIF - Admin Panel",
@@ -379,7 +380,6 @@
       },
       "sources": {
         "llm": "LLM",
-        "dify": "Dify",
         "fastgpt": "FastGPT",
         "coze": "Coze",
         "custom": "Custom"
@@ -544,7 +544,6 @@
   },
   "source": {
     "llm": "LLM",
-    "dify": "Dify",
     "fastgpt": "FastGPT",
     "coze": "Coze",
     "custom": "Custom"
@@ -685,7 +684,7 @@
   },
   "editor": {
     "title": "Text Editor",
-    "workspace": "Workspace",
+    "newTask": "New",
     "originalText": "Original Text",
     "optimizedText": "Optimized Text",
     "selectAgent": "Mode",
@@ -709,7 +708,8 @@
       "collapse": "Collapse",
       "expand": "Expand",
       "stop": "Stop",
-      "initializing": "Initializing..."
+      "initializing": "Initializing...",
+      "login": "Log in"
     },
     "stats": {
       "characters": "Characters",
@@ -732,7 +732,13 @@
       "chatLocked": "Another conversation is in progress, please wait for completion",
       "generateCancelled": "Optimization cancelled",
       "agentSwitched": "Optimization mode switched",
-      "agentSwitchFailed": "Failed to switch optimization mode"
+      "agentSwitchFailed": "Failed to switch optimization mode",
+      "guestRemaining": "You have {count} free guest uses remaining",
+      "guestLimitReached": "Your free guest uses are exhausted. Log in to continue.",
+      "guestStorageUnavailable": "Local storage is unavailable, so guest mode cannot be used.",
+      "newTaskConfirmTitle": "Start a New Optimization Task",
+      "newTaskConfirm": "Your current content will be cleared. Start a new optimization task?",
+      "newTaskGenerating": "Content is being generated. Stop it before starting a new task."
     }
   },
   "order": {

@@ -12,11 +12,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import LangSwitchButton from '@/components/common/language-switch-button'
 import ThemeToggleButton from '@/components/common/theme-toggle-button'
-import { useRouter } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { cn } from "@/lib/utils"
 import { fetcher } from '@/util/fetcher'
-
-type AuthMode = 'code-login' | 'password-login' | 'register' | 'reset-password';
+import { clearGuestUsage } from '@/util/guest-usage'
+import { canEnterGuestMode, type AuthMode } from '@/util/login-page'
 
 export default function LoginPage() {
   const t = useTranslations();
@@ -73,6 +73,10 @@ export default function LoginPage() {
    * @param userType - 用户类型 ('admin' 或 'user')
    */
   const handleLoginRedirect = (userType: string) => {
+    // 登录或注册成功后清除浏览器中的访客身份与次数。
+    clearGuestUsage();
+    window.dispatchEvent(new CustomEvent('user-logged-in'));
+
     // 管理员跳转到管理后台
     if (userType === 'admin') {
       router.push('/admin');
@@ -758,6 +762,13 @@ export default function LoginPage() {
                     t('pages.login.loginButton')
                   )}
                 </Button>
+
+                {/* 游客入口只在登录流程显示，并保留浏览器中已有的游客用量。 */}
+                {canEnterGuestMode(mode) && (
+                  <Button asChild variant="outline" className="w-full h-11">
+                    <Link href="/">{t('pages.login.exploreAsGuest')}</Link>
+                  </Button>
+                )}
 
                 {/* Mode switcher links */}
                 <div className="flex flex-col gap-2 text-center text-sm">

@@ -1,17 +1,50 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useTranslations } from 'next-intl'
-import { Sparkles } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
+import { WandSparkles } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { useRouter } from '@/i18n/navigation'
 import { TextEditorPanel } from '@/components/web/editor/text-editor-panel'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { fetcher } from '@/util/fetcher'
 import { useGlobalDataCache } from '@/hooks/use-global-data-cache'
 import { useGlobalChatState } from '@/hooks/use-global-chat-state'
 import type { Chat } from '@/app/[locale]/types'
+import {
+  canGuestOptimize,
+  getGuestId,
+  setGuestUsageCount,
+  setGuestUsageExhausted,
+} from '@/util/guest-usage'
+import {
+  clearOptimizationTaskStorage,
+  isNewOptimizationTask,
+  OPTIMIZATION_TASK_STORAGE_KEYS,
+} from '@/util/optimization-task'
+import { getValidAccessToken } from '@/util/token'
+
+interface GuestOptimizeResponse {
+  /** 优化后的文本。 */
+  optimized_text: string
+  /** 本次模型调用消耗的 token 数。 */
+  tokens_used: number
+  /** 服务端记录的访客累计次数。 */
+  usage_count: number
+  /** 服务端配置的访客次数上限。 */
+  usage_limit: number
+}
 
 /**
  * 去除 AI 味编辑器组件
@@ -21,12 +54,16 @@ import type { Chat } from '@/app/[locale]/types'
  * - 左侧输入原始文本，右侧展示优化后的文本
  * - 每个面板都可以折叠
  * - 自动保存到 localStorage
- * - 基于 chat 系统进行文本优化
- * - 每天第一次请求自动创建默认 chat
- * - 所有对话记录保存在当天的 chat 中
+ * - 登录用户基于 chat 系统进行文本优化
+ * - 未登录访客可进行三次无状态文本优化
+ * - 登录用户首次生成时按需创建新的 chat
+ * - 用户可通过侧边栏新建并重置当前优化任务
  */
 export default function RemoveFlavorEditor() {
   const t = useTranslations('editor')
+  const tCommonActions = useTranslations('common.actions')
+  const router = useRouter()
+  const searchParams = useSearchParams()
   
   // 文本状态
   const [originalText, setOriginalText] = useState('')
@@ -36,10 +73,13 @@ export default function RemoveFlavorEditor() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false)
   const [isRightCollapsed, setIsRightCollapsed] = useState(false)
+  const [isDraftLoaded, setIsDraftLoaded] = useState(false)
+  const [isNewTaskDialogOpen, setIsNewTaskDialogOpen] = useState(false)
   
   // Chat 状态
   const [currentChat, setCurrentChat] = useState<Chat | null>(null)
   const [isLoadingChat, setIsLoadingChat] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
   const abortController = useRef<AbortController | null>(null)
   
   // Agent 状态
@@ -73,12 +113,6 @@ export default function RemoveFlavorEditor() {
     setIsRightCollapsed(!isRightCollapsed)
   }
 
-  // localStorage 的键名
-  const STORAGE_KEY_ORIGINAL = 'remove-flavor-original-text'
-  const STORAGE_KEY_OPTIMIZED = 'remove-flavor-optimized-text'
-  const STORAGE_KEY_CHAT_DATE = 'remove-flavor-chat-date'
-  const STORAGE_KEY_CHAT_ID = 'remove-flavor-chat-id'
-
   /**
    * 获取今日日期字符串（YYYY-MM-DD 格式）
    */
@@ -88,47 +122,66 @@ export default function RemoveFlavorEditor() {
   }
 
   /**
-   * 获取或创建当天的默认 chat
-   * @param agentId 可选的 agent ID，如果提供则使用该 agent
+   * 恢复当天保存的对话。
+   *
+   * @returns 当天对话仍然存在时返回对话，否则返回 `null`。
    */
-  const getOrCreateTodayChat = async (agentId?: number): Promise<Chat | null> => {
+  const getSavedTodayChat = async (): Promise<Chat | null> => {
     try {
       const today = getTodayDateString()
-      const savedDate = localStorage.getItem(STORAGE_KEY_CHAT_DATE)
-      const savedChatId = localStorage.getItem(STORAGE_KEY_CHAT_ID)
-      
-      // 如果是同一天且有保存的 chat ID，尝试使用已有的 chat
-      if (savedDate === today && savedChatId) {
-        try {
-          const chatId = parseInt(savedChatId)
-          const response = await fetcher(`/chat/${chatId}`, {
-            method: 'GET',
-            auth: true,
-          })
-          const chat = response as Chat
-          return chat
-        } catch {
-          console.warn('保存的 chat 不存在或已被删除，将创建新的 chat')
-        }
+      const savedDate = localStorage.getItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatDate)
+      const savedChatId = localStorage.getItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatId)
+
+      if (savedDate !== today || !savedChatId) {
+        return null
       }
-      
-      // 创建新的 chat
-      // 首先获取可用的 agent 列表
-      const agents = await fetchAgents()
-      if (agents.length === 0) {
+
+      const chatId = parseInt(savedChatId, 10)
+      if (Number.isNaN(chatId)) {
+        localStorage.removeItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatDate)
+        localStorage.removeItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatId)
+        return null
+      }
+
+      const response = await fetcher(`/chat/${chatId}`, {
+        method: 'GET',
+        auth: true,
+      })
+      return response as Chat
+    } catch (error) {
+      console.warn('保存的对话不存在或已被删除，将在首次生成时创建新对话', error)
+      localStorage.removeItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatDate)
+      localStorage.removeItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatId)
+      return null
+    }
+  }
+
+  /**
+   * 为当前优化任务创建新的对话。
+   *
+   * @param agentId - 新对话使用的 Agent ID。
+   * @returns 创建成功的对话，失败时返回 `null`。
+   */
+  const createOptimizationChat = async (agentId?: number): Promise<Chat | null> => {
+    try {
+      const availableAgents = await fetchAgents()
+      if (availableAgents.length === 0) {
         toast.error(t('messages.noAgentAvailable') || '暂无可用的智能体')
         return null
       }
-      
-      // 使用指定的 agent 或第一个 agent（ID 最小的）
-      const targetAgent = agentId ? agents.find(a => a.id === agentId) : agents[0]
+
+      // 优先使用用户当前选择的 Agent，否则回退到列表中的第一个。
+      const targetAgent = agentId
+        ? availableAgents.find(agent => agent.id === agentId)
+        : availableAgents[0]
       if (!targetAgent) {
         toast.error(t('messages.noAgentAvailable') || '暂无可用的智能体')
         return null
       }
-      
-      const chatTitle = `文本优化 - ${today}`
-      
+
+      const now = new Date()
+      const chatTitle = `文本优化 - ${getTodayDateString()} ${now.toTimeString().slice(0, 5)}`
+
       const response = await fetcher('/chat', {
         method: 'POST',
         auth: true,
@@ -137,27 +190,38 @@ export default function RemoveFlavorEditor() {
           agent_id: targetAgent.id
         })
       })
-      
+
       const newChat = response as Chat
-      
-      // 保存到 localStorage
-      localStorage.setItem(STORAGE_KEY_CHAT_DATE, today)
-      localStorage.setItem(STORAGE_KEY_CHAT_ID, newChat.id.toString())
-      
-      // 添加到全局缓存
+      localStorage.setItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatDate, getTodayDateString())
+      localStorage.setItem(OPTIMIZATION_TASK_STORAGE_KEYS.chatId, newChat.id.toString())
       addChatToCache(newChat)
-      
+
       return newChat
     } catch (error) {
-      console.error('Failed to get or create today chat:', error)
+      console.error('Failed to create optimization chat:', error)
       toast.error(t('messages.chatInitFailed') || '初始化对话失败')
       return null
     }
   }
 
-  // 初始化：获取 agents 列表
+  // 初始化登录态，访客不会继续请求需要认证的数据。
+  useEffect(() => {
+    const initializeAuthentication = async () => {
+      const accessToken = await getValidAccessToken()
+      setIsAuthenticated(Boolean(accessToken))
+      if (!accessToken) {
+        setIsLoadingChat(false)
+      }
+    }
+
+    initializeAuthentication()
+  }, [])
+
+  // 登录用户初始化可用 Agent 列表。
   useEffect(() => {
     const initAgents = async () => {
+      if (!isAuthenticated) return
+
       try {
         const agentsList = await fetchAgents()
         // 设置默认 Agent 为第一个
@@ -171,57 +235,136 @@ export default function RemoveFlavorEditor() {
     
     initAgents()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isAuthenticated])
 
-  // 初始化：获取或创建当天的 chat
+  // 登录用户仅恢复当天已有对话；新对话延迟到首次生成时创建。
   useEffect(() => {
     const initChat = async () => {
-      if (!selectedAgentId) return
-      
+      if (!isAuthenticated || !selectedAgentId) return
+
       setIsLoadingChat(true)
-      const chat = await getOrCreateTodayChat(selectedAgentId)
+      const chat = await getSavedTodayChat()
       setCurrentChat(chat)
       setIsLoadingChat(false)
     }
     
     initChat()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedAgentId])
+  }, [isAuthenticated, selectedAgentId])
 
   // 从 localStorage 加载保存的文本
   useEffect(() => {
     try {
-      const savedOriginal = localStorage.getItem(STORAGE_KEY_ORIGINAL)
-      const savedOptimized = localStorage.getItem(STORAGE_KEY_OPTIMIZED)
-      
+      const savedOriginal = localStorage.getItem(OPTIMIZATION_TASK_STORAGE_KEYS.originalText)
+      const savedOptimized = localStorage.getItem(OPTIMIZATION_TASK_STORAGE_KEYS.optimizedText)
+
       if (savedOriginal) setOriginalText(savedOriginal)
       if (savedOptimized) setOptimizedText(savedOptimized)
     } catch (error) {
       console.error('Failed to load from localStorage:', error)
+    } finally {
+      setIsDraftLoaded(true)
     }
   }, [])
 
+  /**
+   * 清空当前优化任务，并消费地址栏中的新建指令。
+   */
+  const resetOptimizationTask = useCallback(() => {
+    try {
+      clearOptimizationTaskStorage(localStorage)
+    } catch (error) {
+      console.error('Failed to clear optimization task storage:', error)
+    }
+
+    setOriginalText('')
+    setOptimizedText('')
+    setCurrentChat(null)
+    setIsLoadingChat(false)
+    setIsLeftCollapsed(false)
+    setIsRightCollapsed(false)
+    setIsNewTaskDialogOpen(false)
+    router.replace('/')
+  }, [router])
+
+  /**
+   * 处理新建任务确认弹框的开关状态。
+   *
+   * 取消或关闭弹框时仅消费新建指令，保留当前编辑内容。
+   *
+   * @param open - 弹框是否打开。
+   */
+  const handleNewTaskDialogOpenChange = (open: boolean) => {
+    setIsNewTaskDialogOpen(open)
+    if (!open) {
+      router.replace('/')
+    }
+  }
+
+  // 消费侧边栏发出的一次性新建指令。
+  useEffect(() => {
+    if (!isDraftLoaded || !isNewOptimizationTask(new URLSearchParams(searchParams.toString()))) {
+      return
+    }
+
+    // 流式请求期间拒绝重置，避免消息写入错误的对话。
+    if (isGenerating) {
+      toast.error(t('messages.newTaskGenerating'))
+      router.replace('/')
+      return
+    }
+
+    const hasDraft = Boolean(originalText || optimizedText)
+    if (hasDraft) {
+      setIsNewTaskDialogOpen(true)
+      return
+    }
+
+    resetOptimizationTask()
+  }, [
+    isDraftLoaded,
+    isGenerating,
+    optimizedText,
+    originalText,
+    resetOptimizationTask,
+    router,
+    searchParams,
+    t,
+  ])
+
   // 保存原始文本到 localStorage
   useEffect(() => {
+    if (!isDraftLoaded) return
+
     try {
-      localStorage.setItem(STORAGE_KEY_ORIGINAL, originalText)
+      if (originalText) {
+        localStorage.setItem(OPTIMIZATION_TASK_STORAGE_KEYS.originalText, originalText)
+      } else {
+        localStorage.removeItem(OPTIMIZATION_TASK_STORAGE_KEYS.originalText)
+      }
     } catch (error) {
       console.error('Failed to save original text:', error)
     }
-  }, [originalText])
+  }, [isDraftLoaded, originalText])
 
   // 保存优化后文本到 localStorage
   useEffect(() => {
+    if (!isDraftLoaded) return
+
     try {
-      localStorage.setItem(STORAGE_KEY_OPTIMIZED, optimizedText)
+      if (optimizedText) {
+        localStorage.setItem(OPTIMIZATION_TASK_STORAGE_KEYS.optimizedText, optimizedText)
+      } else {
+        localStorage.removeItem(OPTIMIZATION_TASK_STORAGE_KEYS.optimizedText)
+      }
     } catch (error) {
       console.error('Failed to save optimized text:', error)
     }
-  }, [optimizedText])
+  }, [isDraftLoaded, optimizedText])
 
   /**
    * 生成优化后的文本
-   * 通过 chat 消息系统调用 AI 进行文本优化
+   * 登录用户走 chat 流式接口，访客走带三次额度限制的无状态接口。
    */
   const handleGenerate = async () => {
     // 验证输入
@@ -230,14 +373,91 @@ export default function RemoveFlavorEditor() {
       return
     }
 
-    // 检查 chat 是否已初始化
-    if (!currentChat) {
-      toast.error(t('messages.chatNotReady') || 'Chat 未就绪，请稍后重试')
+    if (isAuthenticated === null) {
       return
     }
 
+    // 访客不创建聊天，直接调用无状态文本优化接口。
+    if (!isAuthenticated) {
+      if (!canGuestOptimize()) {
+        toast.error(t('messages.guestLimitReached'))
+        router.push('/login')
+        return
+      }
+
+      setIsGenerating(true)
+      setOptimizedText('')
+      abortController.current = new AbortController()
+
+      try {
+        const guestId = getGuestId()
+        if (!guestId) {
+          throw new Error(t('messages.guestStorageUnavailable'))
+        }
+
+        const response = await fetcher<GuestOptimizeResponse>('/text-optimizer/guest-optimize', {
+          method: 'POST',
+          auth: false,
+          body: JSON.stringify({
+            text: originalText.trim(),
+            agent_id: selectedAgentId,
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Guest-ID': guestId,
+          },
+          signal: abortController.current.signal,
+        })
+
+        if (!response) {
+          throw new Error(t('messages.generateFailed'))
+        }
+
+        setOptimizedText(response.optimized_text)
+        setGuestUsageCount(response.usage_count)
+        toast.success(t('messages.generateSuccess'))
+
+        if (response.usage_count < response.usage_limit) {
+          toast.info(t('messages.guestRemaining', {
+            count: response.usage_limit - response.usage_count,
+          }))
+        }
+      } catch (error: unknown) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          toast.info(t('messages.generateCancelled'))
+        } else {
+          const requestError = error as Error & { status?: number }
+          if (requestError.status === 429) {
+            setGuestUsageExhausted()
+            toast.error(t('messages.guestLimitReached'))
+            router.push('/login')
+          } else {
+            console.error('Failed to generate guest optimized text:', error)
+            toast.error(requestError.message || t('messages.generateFailed'))
+          }
+        }
+      } finally {
+        abortController.current = null
+        setIsGenerating(false)
+      }
+      return
+    }
+
+    // 新任务首次生成时才创建对话，避免“新建”产生无消息的空记录。
+    let activeChat = currentChat
+    if (!activeChat) {
+      setIsLoadingChat(true)
+      activeChat = await createOptimizationChat(selectedAgentId)
+      setIsLoadingChat(false)
+
+      if (!activeChat) {
+        return
+      }
+      setCurrentChat(activeChat)
+    }
+
     // 检查是否可以发送消息
-    if (!canSendMessage(currentChat.id)) {
+    if (!canSendMessage(activeChat.id)) {
       toast.error(t('messages.chatLocked') || '有其他对话正在进行中，请等待完成')
       return
     }
@@ -246,7 +466,7 @@ export default function RemoveFlavorEditor() {
     setOptimizedText('') // 清空之前的优化结果
     
     // 开始对话状态
-    startChat(currentChat.id, currentChat.title)
+    startChat(activeChat.id, activeChat.title)
 
     try {
       // 创建新的 AbortController
@@ -260,7 +480,7 @@ export default function RemoveFlavorEditor() {
         auth: true,
         body: JSON.stringify({
           content: originalText.trim(),
-          chat_id: currentChat.id,
+          chat_id: activeChat.id,
           role: 'user'
         }),
         headers: { 'Content-Type': 'application/json' },
@@ -283,7 +503,7 @@ export default function RemoveFlavorEditor() {
       
       // 更新全局缓存（添加用户消息和 AI 回复）
       const now = new Date().toISOString()
-      addMessageToChat(currentChat.id, {
+      addMessageToChat(activeChat.id, {
         id: Date.now(),
         content: originalText.trim(),
         role: 'user',
@@ -291,7 +511,7 @@ export default function RemoveFlavorEditor() {
         updated_at: now
       })
       
-      addMessageToChat(currentChat.id, {
+      addMessageToChat(activeChat.id, {
         id: Date.now() + 1,
         content: assistantContent,
         role: 'assistant',
@@ -364,6 +584,37 @@ export default function RemoveFlavorEditor() {
 
   return (
     <div className="flex flex-col w-full h-full">
+      {/* 使用 Shadcn Dialog 确认是否清空当前内容并新建任务。 */}
+      <Dialog
+        open={isNewTaskDialogOpen}
+        onOpenChange={handleNewTaskDialogOpenChange}
+      >
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>{t('messages.newTaskConfirmTitle')}</DialogTitle>
+            <DialogDescription>
+              {t('messages.newTaskConfirm')}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleNewTaskDialogOpenChange(false)}
+            >
+              {tCommonActions('cancel')}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={resetOptimizationTask}
+            >
+              {t('newTask')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 主编辑区域 */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* 左侧面板 - 原始文本 */}
@@ -393,7 +644,11 @@ export default function RemoveFlavorEditor() {
           <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10">
             <Button
               onClick={isGenerating ? handleStopGeneration : handleGenerate}
-              disabled={isLoadingChat || !currentChat || (!isGenerating && !originalText.trim())}
+              disabled={
+                isAuthenticated === null
+                || (isAuthenticated && isLoadingChat)
+                || (!isGenerating && !originalText.trim())
+              }
               size="icon"
               className={cn(
                 "h-16 w-16 rounded-full shadow-lg hover:shadow-xl transition-all duration-300",
@@ -402,19 +657,19 @@ export default function RemoveFlavorEditor() {
                   : "bg-primary hover:bg-primary/90"
               )}
               title={
-                isLoadingChat 
+                isAuthenticated === null || (isAuthenticated && isLoadingChat)
                   ? t('actions.initializing') || '初始化中...'
                   : isGenerating 
                   ? t('actions.stop') || '停止' 
                   : t('actions.generate')
               }
             >
-              {isLoadingChat ? (
+              {isAuthenticated === null || (isAuthenticated && isLoadingChat) ? (
                 <div className="h-7 w-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : isGenerating ? (
-                <div className="h-6 w-6 border-2 border-white" />
+                <div className="h-7 w-7 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
-                <Sparkles className="h-7 w-7" />
+                <WandSparkles className="size-6" />
               )}
             </Button>
           </div>

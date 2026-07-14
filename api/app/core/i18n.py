@@ -25,6 +25,9 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "unauthorized": "未授权",
         "forbidden": "禁止访问",
         "internal_error": "内部服务器错误",
+        "text_empty": "文本不能为空",
+        "text_optimization_failed": "文本优化失败，请稍后重试",
+        "guest_usage_limit_reached": "游客免费次数已用完，请登录后继续使用",
         # User related
         "user_exists": "用户已存在",
         "user_created": "用户创建成功",
@@ -70,6 +73,8 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "agent_deleted": "智能助手已删除",
         "agent_not_found_or_inactive": "智能助手不存在或已停用",
         "agent_test_failed": "智能助手测试失败",
+        "agent_response_failed": "抱歉，AI 回复生成失败，请稍后重试",
+        "agent_response_interrupted": "响应已中断",
         "agent_connection_error": "智能助手连接错误",
         # Admin related
         "admin_required": "需要管理员权限",
@@ -111,20 +116,14 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "membership_stats_success": "获取会员分布统计成功",
         "initialize_plans_failed": "初始化默认会员计划失败",
         "initialize_plans_success": "默认会员计划初始化成功",
-        # Dify API related
-        "dify_api_request_failed": "Dify API 请求失败",
-        "dify_api_error": "Dify API 错误",
+        # Agent API related
         "user_message_not_found": "未找到用户消息",
-        "update_chat_others_failed": "更新 chat others 字段失败",
         "unknown_error": "未知错误",
-        "dify_agent_connection_normal": "Dify Agent 连接正常",
-        "dify_agent_response_empty": "Dify Agent 响应为空",
         "api_key_invalid": "API Key 无效或已过期",
         "api_endpoint_not_found": "API 端点不存在或 URL 配置错误",
         "api_rate_limit": "API 调用频率超限",
-        "dify_server_error": "Dify 服务器内部错误",
         "request_timeout": "请求超时，请检查网络连接",
-        "connection_failed": "无法连接到 Dify API 服务器",
+        "connection_failed": "无法连接到模型 API 服务器",
         "test_failed": "测试失败",
         # CRUD related
         "update_user_stats_failed": "更新用户使用统计失败",
@@ -155,6 +154,9 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "unauthorized": "Unauthorized",
         "forbidden": "Forbidden",
         "internal_error": "Internal server error",
+        "text_empty": "Text cannot be empty",
+        "text_optimization_failed": "Text optimization failed. Please try again later.",
+        "guest_usage_limit_reached": "Guest usage limit reached. Log in to continue.",
         # User related
         "user_exists": "User already exists",
         "user_created": "User created successfully",
@@ -200,6 +202,8 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "agent_deleted": "Agent is deleted",
         "agent_not_found_or_inactive": "Agent not found or inactive",
         "agent_test_failed": "Agent test failed",
+        "agent_response_failed": "Sorry, the AI response failed. Please try again later.",
+        "agent_response_interrupted": "Response interrupted",
         "agent_connection_error": "Agent connection error",
         # Admin related
         "admin_required": "Admin privileges required",
@@ -241,20 +245,14 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "membership_stats_success": "Membership statistics retrieved successfully",
         "initialize_plans_failed": "Failed to initialize default membership plans",
         "initialize_plans_success": "Default membership plans initialized successfully",
-        # Dify API related
-        "dify_api_request_failed": "Dify API request failed",
-        "dify_api_error": "Dify API error",
+        # Agent API related
         "user_message_not_found": "User message not found",
-        "update_chat_others_failed": "Failed to update chat others field",
         "unknown_error": "Unknown error",
-        "dify_agent_connection_normal": "Dify Agent connection is normal",
-        "dify_agent_response_empty": "Dify Agent response is empty",
         "api_key_invalid": "API Key is invalid or expired",
         "api_endpoint_not_found": "API endpoint not found or URL configuration error",
         "api_rate_limit": "API rate limit exceeded",
-        "dify_server_error": "Dify server internal error",
         "request_timeout": "Request timeout, please check network connection",
-        "connection_failed": "Unable to connect to Dify API server",
+        "connection_failed": "Unable to connect to model API server",
         "test_failed": "Test failed",
         # CRUD related
         "update_user_stats_failed": "Failed to update user usage statistics",

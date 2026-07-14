@@ -1,7 +1,7 @@
 [project]
 name = "remove-ai-flavor-api"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.14"
 description = "Remove AI Flavor API"
 authors = [
     { name="remove-ai-flavor", email="remove-ai-flavor@v2ai.org" }
@@ -13,7 +13,7 @@ dependencies = [
     "pydantic~=2.11.3",
     "python-dotenv~=1.1.0",
     "sqlalchemy>=2.0.40",
-    "psycopg2-binary==2.9.5",
+    "psycopg2-binary>=2.9.10",
     "email-validator>=2.2.0",
     "passlib>=1.7.4",
     "python-jose>=3.4.0",
@@ -27,6 +27,7 @@ dependencies = [
     "colorlog>=6.8.2",
     "stripe>=8.0.0",
     "resend>=0.6.0",
+    "agno>=2.7.2",
 ]
 
 [tool.uv]
@@ -35,7 +36,11 @@ dev-dependencies = [
     "isort>=5.13.2",
     "black>=24.0.0",
     "pre-commit>=4.0.1",
+    "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
 
 # Black 配置
 [tool.black]
