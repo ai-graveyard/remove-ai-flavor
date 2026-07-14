@@ -25,7 +25,7 @@ description: Remove AI Flavor 关键文件和常用命令
 make dev-api
 make dev-web
 make deploy-ci
-pnpm lint:md
+make lint-md
 
 # 后端
 cd api

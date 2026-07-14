@@ -76,9 +76,9 @@ pnpm test
 pnpm build
 make i18n-check
 
-# Markdown (repository root)
+# Markdown (repository root; no root Node.js install required)
 cd ..
-pnpm lint:md
+make lint-md
 ```
 
 Bug fixes should include a regression test when practical. Changes to guest usage, membership access, migrations, and the Agent adapter must test both success and failure paths.

@@ -166,13 +166,10 @@ mise.toml
 deploy/volumes/
 deploy/.env
 
-# Node.js dependencies (root level)
+# Node.js dependencies
 node_modules/
 
 *.backup*
 
 .next/
 */.next/
-
-# Pagefind 搜索索引文件 (自动生成的构建产物)
-docs/public/_pagefind/

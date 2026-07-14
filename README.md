@@ -172,9 +172,9 @@ pnpm test
 pnpm build
 make i18n-check
 
-# Markdown（仓库根目录）
+# Markdown（仓库根目录，无需安装根目录 Node.js 依赖）
 cd ..
-pnpm lint:md
+make lint-md
 ```
 
 涉及数据库模型的修改必须同时提供 Alembic 迁移。涉及界面文案的修改必须同步更新 `web/app/messages/zh.json` 和 `web/app/messages/en.json`。
@@ -205,7 +205,6 @@ remove-ai-flavor/
 
 ## 进一步阅读
 
-- [文档索引](./docs/README.md)
 - [后端开发说明](./api/README.md)
 - [前端开发说明](./web/README.md)
 - [部署指南](./deploy/README.md)

@@ -29,7 +29,7 @@ Remove AI Flavor（RAIF）是文本去 AI 味应用。后端使用 FastAPI、SQL
 make dev-api
 make dev-web
 make deploy-ci
-pnpm lint:md
+make lint-md
 
 # 后端
 cd api

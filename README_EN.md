@@ -172,9 +172,9 @@ pnpm test
 pnpm build
 make i18n-check
 
-# Markdown (repository root)
+# Markdown (repository root; no root Node.js install required)
 cd ..
-pnpm lint:md
+make lint-md
 ```
 
 Database model changes must include an Alembic migration. UI copy changes must update both `web/app/messages/zh.json` and `web/app/messages/en.json`.
@@ -205,7 +205,6 @@ remove-ai-flavor/
 
 ## Documentation
 
-- [Documentation index](./docs/README_EN.md)
 - [Backend guide](./api/README.md)
 - [Frontend guide](./web/README.md)
 - [Deployment guide](./deploy/README.md)

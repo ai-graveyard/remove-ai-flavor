@@ -11,7 +11,7 @@ description: Markdown 文档格式和维护规范
 - 代码块必须标注语言；目录树使用 `text`，环境变量使用 `dotenv`。
 - 文件链接优先使用相对路径，图片必须有有意义的 alt 文本。
 - 命令必须与当前 Makefile、package scripts 和项目目录一致。
-- 根目录已配置 Markdownlint 与 Prettier；使用 `pnpm lint:md` 检查，使用 `pnpm lint:md:fix` 或 `pnpm format:md` 修复。
+- Markdownlint 与 Prettier 通过 Makefile 临时运行；使用 `make lint-md` 检查，使用 `make lint-md-fix` 或 `make format-md` 修复，无需安装根目录 Node.js 依赖。
 - 文档工具忽略 vendored 的 `api/app/skills/stop-slop/`，避免改写上游固定副本。
 - 中英文 README 的功能、端口、命令和安全说明保持同步。
 - 配置示例只使用占位值，不放入真实密钥、域名或用户数据。

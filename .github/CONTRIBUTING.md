@@ -76,9 +76,9 @@ pnpm test
 pnpm build
 make i18n-check
 
-# Markdown（仓库根目录）
+# Markdown（仓库根目录，无需安装根目录 Node.js 依赖）
 cd ..
-pnpm lint:md
+make lint-md
 ```
 
 修复 Bug 时应优先添加能复现问题的测试。涉及访客额度、会员权限、迁移和 Agent 适配的修改必须覆盖成功与失败路径。

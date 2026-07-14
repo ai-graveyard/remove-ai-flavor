@@ -18,7 +18,7 @@ API_IMAGE := $(DOCKER_REGISTRY)/$(IMAGE_PREFIX)-api$(IMAGE_SUFFIX)
 WEB_IMAGE := $(DOCKER_REGISTRY)/$(IMAGE_PREFIX)-web$(IMAGE_SUFFIX)
 
 .PHONY: help dev-web dev-api build-api build-web build-all push-api push-web push-all run-api run-web run-all \
-	build-push-all build-push-api build-push-web start stop logs restart rebuild deploy deploy-ci
+	build-push-all build-push-api build-push-web lint-md lint-md-fix format-md start stop logs restart rebuild deploy deploy-ci
 
 ## 显示根目录可用命令。
 help:
@@ -27,6 +27,7 @@ help:
 	@echo "开发:"
 	@echo "  make dev-web   启动 Next.js 前端开发服务器"
 	@echo "  make dev-api   启动 FastAPI 后端开发服务器"
+	@echo "  make lint-md   检查仓库 Markdown 文档"
 	@echo ""
 	@echo "部署:"
 	@echo "  make build-api | build-web | build-all"
@@ -41,6 +42,18 @@ dev-web:
 ## 在 api 目录中启动后端开发服务器。
 dev-api:
 	cd api && uv run python -m app.main
+
+## 使用临时工具检查仓库 Markdown 文档，无需安装根目录 Node.js 依赖。
+lint-md:
+	pnpm dlx markdownlint-cli@0.39.0 '**/*.md' --ignore node_modules --ignore web/node_modules --ignore api/app/skills/stop-slop
+
+## 自动修复仓库 Markdown 文档格式。
+lint-md-fix:
+	pnpm dlx markdownlint-cli@0.39.0 '**/*.md' --ignore node_modules --ignore web/node_modules --ignore api/app/skills/stop-slop --fix
+
+## 使用临时工具统一格式化仓库 Markdown 文档。
+format-md:
+	pnpm dlx prettier@3.2.5 --write '**/*.md' --ignore-path .gitignore --ignore-path .prettierignore
 
 ## 构建 API Docker 镜像。
 build-api:
