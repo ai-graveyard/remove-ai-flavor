@@ -30,6 +30,7 @@ import type { Chat } from '@/app/[locale]/types'
 interface SharedLayoutProps {
   children: React.ReactNode
   breadcrumbTitle?: string
+  breadcrumbDescription?: string
 }
 
 /**
@@ -42,8 +43,13 @@ interface SharedLayoutProps {
  * 
  * @param children - 页面内容
  * @param breadcrumbTitle - 面包屑标题
+ * @param breadcrumbDescription - 首页标题旁显示的页面简介
  */
-export default function SharedLayout({ children, breadcrumbTitle }: SharedLayoutProps) {
+export default function SharedLayout({
+  children,
+  breadcrumbTitle,
+  breadcrumbDescription,
+}: SharedLayoutProps) {
   const router = useRouter()
   const pathname = usePathname()
   const t = useTranslations()
@@ -126,8 +132,8 @@ export default function SharedLayout({ children, breadcrumbTitle }: SharedLayout
         />
       )}
       <SidebarInset>
-        <header className="sticky top-0 z-20 bg-background border-b flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
-          <div className="flex items-center gap-2 px-4">
+        <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-2 border-b bg-background/80 backdrop-blur-xl transition-[width,height] ease-linear supports-[backdrop-filter]:bg-background/70 group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
+          <div className="flex min-w-0 items-center gap-2 px-4">
             {isAuthenticated && (
               <>
                 <SidebarTrigger className="-ml-1" />
@@ -137,26 +143,47 @@ export default function SharedLayout({ children, breadcrumbTitle }: SharedLayout
                 />
               </>
             )}
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem className="hidden md:block text-lg">
-                  <BreadcrumbLink href="#">
-                    {getBreadcrumbTitle()}
-                  </BreadcrumbLink>
-                </BreadcrumbItem>
-              </BreadcrumbList>
-            </Breadcrumb>
+            {isHomePage ? (
+              <div className="hidden min-w-0 items-baseline gap-3 md:flex">
+                <h1 className="shrink-0 text-lg font-semibold tracking-tight text-foreground">
+                  {getBreadcrumbTitle()}
+                </h1>
+                {breadcrumbDescription && (
+                  <p className="max-w-[min(48vw,42rem)] truncate text-sm text-muted-foreground/80">
+                    {breadcrumbDescription}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <Breadcrumb>
+                <BreadcrumbList>
+                  <BreadcrumbItem className="hidden md:block text-lg">
+                    <BreadcrumbLink href="#">
+                      {getBreadcrumbTitle()}
+                    </BreadcrumbLink>
+                  </BreadcrumbItem>
+                </BreadcrumbList>
+              </Breadcrumb>
+            )}
           </div>
-          <div className="ml-auto justify-end pr-4 flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center justify-end gap-3 pr-3 sm:pr-4">
             {isAuthenticated ? (
               <UpgradePlanDialog />
             ) : isAuthenticated === false ? (
-              <Button size="sm" onClick={() => router.push('/login')}>
+              <Button
+                size="sm"
+                className="h-9 rounded-lg px-4"
+                onClick={() => router.push('/login')}
+              >
                 {t('editor.actions.login')}
               </Button>
             ) : null}
-            <ThemeToggleButton />
-            <LanguageSwitchButton />
+            {/* 将低频设置收进统一工具栏，避免与主要操作竞争视觉注意力。 */}
+            <div className="flex items-center rounded-lg border bg-muted/30 p-0.5 [&_button]:size-8 [&_button]:rounded-md [&_svg]:size-4">
+              <ThemeToggleButton />
+              <div aria-hidden="true" className="h-4 w-px bg-border" />
+              <LanguageSwitchButton />
+            </div>
           </div>
         </header>
         <div className="flex flex-1 flex-col pt-0 overflow-hidden">

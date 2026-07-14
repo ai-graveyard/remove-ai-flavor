@@ -2,14 +2,14 @@
   "app": {
     "name": "RAIF",
     "fullName": "Remove AI Flavor",
-    "slogan": "Make AI text more human-like",
+    "slogan": "Remove the AI tone from your text",
     "poweredBy": "Powered by"
   },
   "seo": {
     "home": {
       "title": "Make AI Text Sound Human | Remove AI Flavor",
       "description": "Improve AI-generated text online by reducing stiff phrasing and repetitive patterns, so articles, emails, and social posts read more naturally.",
-      "heading": "Make AI text sound more human",
+      "heading": "Remove the AI tone from your text",
       "intro": "Paste AI-generated text to reduce stiff wording, repetitive sentence patterns, and formulaic phrasing."
     },
     "login": {
@@ -698,7 +698,7 @@
     "title": "Text Editor",
     "newTask": "New",
     "originalText": "Original Text",
-    "optimizedText": "Optimized Text",
+    "optimizedText": "Clean Text",
     "selectAgent": "Mode",
     "loading": "Loading...",
     "membership": {

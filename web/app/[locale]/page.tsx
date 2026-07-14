@@ -49,23 +49,18 @@ export async function generateMetadata({
 }
 
 /**
- * 主页面内容组件，输出可索引的产品说明和交互式文本优化工作台。
+ * 主页面内容组件，在原有头部输出主标题并展示交互式文本优化工作台。
  *
  * @param heading - 首页主标题。
- * @param intro - 首页产品简介。
+ * @param intro - 与主标题同行显示的首页简介。
  */
 function HomePageContent({ heading, intro }: { heading: string; intro: string }) {
   return (
-    <SharedLayout>
+    <SharedLayout
+      breadcrumbTitle={heading}
+      breadcrumbDescription={intro}
+    >
       <div className="flex h-full min-h-0 w-full flex-col">
-        <section className="shrink-0 border-b bg-muted/20 px-4 py-3 sm:px-6">
-          <h1 className="text-lg font-semibold tracking-tight sm:text-xl">
-            {heading}
-          </h1>
-          <p className="mt-1 max-w-4xl text-sm text-muted-foreground">
-            {intro}
-          </p>
-        </section>
         <div className="min-h-0 flex-1">
           <Suspense
             fallback={

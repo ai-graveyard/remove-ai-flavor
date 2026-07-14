@@ -2,14 +2,14 @@
   "app": {
     "name": "RAIF",
     "fullName": "Remove AI Flavor",
-    "slogan": "让 AI 文本更像人写的",
+    "slogan": "去掉文本中的 AI 味",
     "poweredBy": "技术支持"
   },
   "seo": {
     "home": {
       "title": "AI 文本去 AI 味工具 | Remove AI Flavor",
       "description": "免费在线优化 AI 生成文本，减少生硬表达和模板化措辞，让文章、邮件和社交媒体内容读起来更自然。",
-      "heading": "让 AI 文本更像人写的",
+      "heading": "去掉文本中的 AI 味",
       "intro": "粘贴需要优化的 AI 生成文本，即可减少生硬表达、重复句式和模板化措辞。"
     },
     "login": {
@@ -698,7 +698,7 @@
     "title": "文本编辑器",
     "newTask": "新建",
     "originalText": "原始文本",
-    "optimizedText": "优化后文本",
+    "optimizedText": "去味文本",
     "selectAgent": "智能体",
     "loading": "加载中...",
     "membership": {
