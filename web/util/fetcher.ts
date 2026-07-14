@@ -1,4 +1,4 @@
-import { getValidAccessToken, getApiUrl, clearAuthData } from "@/util/token";
+import { getValidAccessToken, getApiUrl, clearAuthData } from "./token";
 
 const API_URL_V1 = `${getApiUrl()}/api/v1`;
 
@@ -61,8 +61,12 @@ function getAcceptLanguage(): string {
 }
 
 type FetchOptions = RequestInit & {
+    /** 是否自动附加有效的 Bearer Token。 */
     auth?: boolean;
+    /** 是否按文本流读取响应。 */
     stream?: boolean;
+    /** 收到 401 时是否清除登录态并跳转登录页，认证表单应设为 false。 */
+    redirectOnUnauthorized?: boolean;
 };
 
 /**
@@ -113,11 +117,25 @@ function checkStreamSupport(): boolean {
     return true;
 }
 
+/**
+ * 发送统一 API 请求，并集中处理认证、语言和流式响应。
+ *
+ * @param url - 相对于 `/api/v1` 的接口路径。
+ * @param options - 请求配置及认证行为选项。
+ * @param onData - 流式响应的数据块回调。
+ * @returns JSON 响应数据；流式请求完成后不返回数据。
+ */
 export async function fetcher<T>(
     url: string,
     options: FetchOptions = {},
     onData?: (chunk: string) => void
 ): Promise<T | void> {
+    const {
+        auth = false,
+        stream = false,
+        redirectOnUnauthorized = true,
+        ...requestOptions
+    } = options;
     const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Accept-Language': getAcceptLanguage(),  // 自动添加语言头
@@ -136,7 +154,7 @@ export async function fetcher<T>(
     }
 
     // Automatically add Authorization header
-    if (options.auth) {
+    if (auth) {
         const token = await getValidAccessToken();
         if (token) headers['Authorization'] = `Bearer ${token}`;
     }
@@ -145,7 +163,7 @@ export async function fetcher<T>(
     const nativeFetch = getNativeFetch();
     
     // 流式请求的特殊头部设置
-    if (options.stream) {
+    if (stream) {
         // 确保不会被压缩或缓存
         headers['Accept'] = 'text/plain';
         headers['Cache-Control'] = 'no-cache';
@@ -161,22 +179,37 @@ export async function fetcher<T>(
     const fullUrl = `${API_URL_V1}${url}`;
     
     const res = await nativeFetch(fullUrl, {
-        ...options,
+        ...requestOptions,
         headers,
     });
 
     if (!res.ok) {
         // 处理 401 未授权错误
         if (res.status === 401) {
-            console.warn('收到 401 未授权响应，跳转到登录页');
-            handleUnauthorized();
-            // 抛出一个特殊的错误，让调用方知道是认证失败
-            const authError = new Error('未授权，请重新登录') as Error & {
+            let errorMessage = '未授权，请重新登录';
+            let errorDetails = null;
+            try {
+                const error = await res.json();
+                errorMessage = error.detail || error.message || errorMessage;
+                errorDetails = error;
+            } catch {
+                // 401 响应没有 JSON 正文时保留通用提示。
+            }
+
+            if (redirectOnUnauthorized) {
+                console.warn('收到 401 未授权响应，跳转到登录页');
+                handleUnauthorized();
+            }
+
+            // 抛出带状态与详情的认证错误，供登录表单展示服务端本地化信息。
+            const authError = new Error(errorMessage) as Error & {
                 status: number;
                 isAuthError: boolean;
+                details: unknown;
             };
             authError.status = 401;
             authError.isAuthError = true;
+            authError.details = errorDetails;
             throw authError;
         }
         
@@ -207,7 +240,7 @@ export async function fetcher<T>(
         throw newError;
     }
 
-    if (options.stream) {
+    if (stream) {
         if (!res.body) {
             throw new Error('响应体为空，无法进行流式读取');
         }

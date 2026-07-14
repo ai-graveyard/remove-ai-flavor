@@ -17,7 +17,24 @@ import { cn } from "@/lib/utils"
 import { fetcher } from '@/util/fetcher'
 import { clearGuestUsage } from '@/util/guest-usage'
 import { canEnterGuestMode, type AuthMode } from '@/util/login-page'
+import { clearAuthData } from '@/util/token'
 
+type AuthenticatedUserType = 'admin' | 'user'
+
+/** 登录接口签发的访问令牌与刷新令牌。 */
+interface AuthTokenResponse {
+  access_token: string
+  refresh_token: string
+}
+
+/** 登录完成后用于确认跳转目标的用户资料。 */
+interface AuthUserProfile {
+  user_type: AuthenticatedUserType
+}
+
+/**
+ * 登录页面组件，处理验证码、密码、注册和密码重置流程。
+ */
 export default function LoginPage() {
   const t = useTranslations();
   const router = useRouter();
@@ -72,19 +89,67 @@ export default function LoginPage() {
    * 
    * @param userType - 用户类型 ('admin' 或 'user')
    */
-  const handleLoginRedirect = (userType: string) => {
+  const handleLoginRedirect = (userType: AuthenticatedUserType) => {
     // 登录或注册成功后清除浏览器中的访客身份与次数。
     clearGuestUsage();
-    window.dispatchEvent(new CustomEvent('user-logged-in'));
 
-    // 管理员跳转到管理后台
-    if (userType === 'admin') {
-      router.push('/admin');
-    } else {
-      // 普通用户跳转到首页
-      router.push('/');
-    }
+    // 先发起目标页导航，避免全局数据刷新阻塞或覆盖本次登录跳转。
+    router.replace(userType === 'admin' ? '/admin' : '/');
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('user-logged-in'));
+    }, 0);
   };
+
+  /**
+   * 保存新签发的令牌并向服务端确认用户身份。
+   *
+   * 登录阶段的 401 由当前表单处理，不能触发全局登出跳转；资料确认失败时
+   * 会清除刚写入的令牌，避免以不完整登录态进入首页或管理后台。
+   *
+   * @param userData - 登录、注册或验证码接口返回的令牌数据。
+   * @param invalidResponseMessage - 令牌响应不完整时显示的本地化错误。
+   * @returns 服务端确认后的用户类型。
+   */
+  const completeAuthentication = async (
+    userData: unknown,
+    invalidResponseMessage: string,
+  ): Promise<AuthenticatedUserType> => {
+    if (!userData || typeof userData !== 'object') {
+      throw new Error(invalidResponseMessage)
+    }
+
+    const { access_token, refresh_token } = userData as Partial<AuthTokenResponse>
+    if (!access_token || !refresh_token) {
+      throw new Error(invalidResponseMessage)
+    }
+
+    localStorage.setItem('email', email)
+    localStorage.setItem('access_token', access_token)
+    localStorage.setItem('refresh_token', refresh_token)
+
+    try {
+      const userProfile = await fetcher<AuthUserProfile>('/auth/me', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${access_token}`,
+        },
+        redirectOnUnauthorized: false,
+      })
+
+      if (!userProfile) {
+        throw new Error(invalidResponseMessage)
+      }
+
+      const actualUserType = userProfile.user_type === 'admin' ? 'admin' : 'user'
+      localStorage.setItem('user_type', actualUserType)
+      window.dispatchEvent(new CustomEvent('user-type-changed'))
+      return actualUserType
+    } catch (error) {
+      clearAuthData()
+      throw error
+    }
+  }
 
   // validate email format
   function isValidEmail(email: string) {
@@ -174,6 +239,7 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, lang, purpose }),
+        redirectOnUnauthorized: false,
       }).then(() => {
         let message = '';
         switch (purpose) {
@@ -207,7 +273,7 @@ export default function LoginPage() {
     return () => clearTimeout(timer);
   }, [countdown]);
 
-  // Handle user registration
+  // 处理用户注册
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -223,50 +289,15 @@ export default function LoginPage() {
           password,
           lang 
         }),
+        redirectOnUnauthorized: false,
       });
 
-      if (userData) {
-        const { access_token, refresh_token } = userData as { 
-          access_token: string; 
-          refresh_token: string; 
-        };
-        
-        if (access_token && refresh_token) {
-          localStorage.setItem('email', email);
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', refresh_token);
-          
-          // Get user details
-          try {
-            const userProfile = await fetcher('/auth/me', {
-              method: "GET",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${access_token}`
-              },
-            });
-            
-            if (userProfile) {
-              const actualUserType = (userProfile as { user_type: string }).user_type;
-              localStorage.setItem('user_type', actualUserType);
-              window.dispatchEvent(new CustomEvent('user-type-changed'));
-              
-              toast.success(t('auth.messages.registerSuccess'));
-              setTimeout(() => {
-                handleLoginRedirect(actualUserType);
-              }, 1000);
-            }
-          } catch (profileError) {
-            console.error('Failed to get user profile:', profileError);
-            localStorage.setItem('user_type', 'user');
-            window.dispatchEvent(new CustomEvent('user-type-changed'));
-            toast.success(t('auth.messages.registerSuccess'));
-            setTimeout(() => {
-              handleLoginRedirect('user');
-            }, 1000);
-          }
-        }
-      }
+      const actualUserType = await completeAuthentication(
+        userData,
+        t('auth.messages.registerFailed'),
+      )
+      toast.success(t('auth.messages.registerSuccess'))
+      handleLoginRedirect(actualUserType)
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('auth.messages.registerFailed');
       toast.error(errorMessage);
@@ -274,7 +305,7 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  // Handle password login
+  // 处理密码登录
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -284,50 +315,15 @@ export default function LoginPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, lang }),
+        redirectOnUnauthorized: false,
       });
 
-      if (userData) {
-        const { access_token, refresh_token } = userData as { 
-          access_token: string; 
-          refresh_token: string; 
-        };
-        
-        if (access_token && refresh_token) {
-          localStorage.setItem('email', email);
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', refresh_token);
-          
-          // Get user details
-          try {
-            const userProfile = await fetcher('/auth/me', {
-              method: "GET",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${access_token}`
-              },
-            });
-            
-            if (userProfile) {
-              const actualUserType = (userProfile as { user_type: string }).user_type;
-              localStorage.setItem('user_type', actualUserType);
-              window.dispatchEvent(new CustomEvent('user-type-changed'));
-              
-              toast.success(t('auth.messages.loginSuccess'));
-              setTimeout(() => {
-                handleLoginRedirect(actualUserType);
-              }, 1000);
-            }
-          } catch (profileError) {
-            console.error('Failed to get user profile:', profileError);
-            localStorage.setItem('user_type', 'user');
-            window.dispatchEvent(new CustomEvent('user-type-changed'));
-            toast.success(t('auth.messages.loginSuccess'));
-            setTimeout(() => {
-              handleLoginRedirect('user');
-            }, 1000);
-          }
-        }
-      }
+      const actualUserType = await completeAuthentication(
+        userData,
+        t('auth.messages.loginFailed'),
+      )
+      toast.success(t('auth.messages.loginSuccess'))
+      handleLoginRedirect(actualUserType)
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('auth.messages.loginFailed');
       toast.error(errorMessage);
@@ -335,7 +331,7 @@ export default function LoginPage() {
     setLoading(false);
   };
 
-  // Handle reset password
+  // 处理密码重置
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -350,6 +346,7 @@ export default function LoginPage() {
           new_password: newPassword,
           lang 
         }),
+        redirectOnUnauthorized: false,
       });
 
       toast.success(t('auth.messages.resetSuccess'));
@@ -371,97 +368,40 @@ export default function LoginPage() {
     setLoading(true);
     
     try {
-      // Try regular user login first
+      // 先使用统一用户入口登录，再兼容旧的管理员专用入口。
       let userData = null;
-      let isAdmin = false;
       
       try {
         userData = await fetcher('/auth/verify', {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email, code, lang }),
+          redirectOnUnauthorized: false,
         });
       } catch (regularError) {
-        // If regular login fails, try admin login
+        // 统一入口失败时尝试管理员专用入口，且不允许全局 401 逻辑打断表单。
         try {
           userData = await fetcher('/auth/admin/verify', {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, code, lang }),
+            redirectOnUnauthorized: false,
           });
-          isAdmin = true;
         } catch {
-          throw regularError; // Use the original error
+          throw regularError; // 两个入口均失败时展示首次请求返回的原始错误。
         }
       }
 
-      if (userData) {
-        const { access_token, refresh_token } = userData as { 
-          access_token: string; 
-          refresh_token: string; 
-        };
-        
-        if (access_token && refresh_token) {
-          localStorage.setItem('email', email);
-          localStorage.setItem('access_token', access_token);
-          localStorage.setItem('refresh_token', refresh_token);
-          
-          // Get user details to determine actual user type
-          try {
-            const userProfile = await fetcher('/auth/me', {
-              method: "GET",
-              headers: { 
-                "Content-Type": "application/json",
-                "Authorization": `Bearer ${access_token}`
-              },
-            });
-            
-            if (userProfile) {
-              // Set localStorage based on actual user type returned from backend
-              const actualUserType = (userProfile as { user_type: string; membership_type: string }).user_type;
-              
-              localStorage.setItem('user_type', actualUserType);
-              
-              // Trigger custom event to notify components to update state
-              window.dispatchEvent(new CustomEvent('user-type-changed'));
-              
-              if (actualUserType === 'admin') {
-                toast.success(t('auth.messages.adminLoginSuccess'));
-                setTimeout(() => {
-                  handleLoginRedirect(actualUserType);
-                }, 1000);
-              } else {
-                toast.success(t('auth.messages.userLoginSuccess'));
-                setTimeout(() => {
-                  handleLoginRedirect(actualUserType);
-                }, 1000);
-              }
-            } else {
-              throw new Error('Failed to get user profile');
-            }
-          } catch (profileError) {
-            console.error('Failed to get user profile:', profileError);
-            // If getting user info fails, fallback to endpoint-based judgment
-            if (isAdmin) {
-              localStorage.setItem('user_type', 'admin');
-              window.dispatchEvent(new CustomEvent('user-type-changed'));
-              toast.success(t('auth.messages.adminLoginSuccess'));
-              setTimeout(() => {
-                handleLoginRedirect('admin');
-              }, 1000);
-            } else {
-              localStorage.setItem('user_type', 'user');
-              window.dispatchEvent(new CustomEvent('user-type-changed'));
-              toast.success(t('auth.messages.userLoginSuccess'));
-              setTimeout(() => {
-                handleLoginRedirect('user');
-              }, 1000);
-            }
-          }
-        } else {
-          toast.error(t('auth.messages.loginFailed'));
-        }
+      const actualUserType = await completeAuthentication(
+        userData,
+        t('auth.messages.loginFailed'),
+      )
+      if (actualUserType === 'admin') {
+        toast.success(t('auth.messages.adminLoginSuccess'))
+      } else {
+        toast.success(t('auth.messages.userLoginSuccess'))
       }
+      handleLoginRedirect(actualUserType)
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : t('auth.messages.loginFailed');
       toast.error(errorMessage);
