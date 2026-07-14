@@ -81,13 +81,13 @@ def test_guest_can_optimize_without_authorization(monkeypatch) -> None:
         "optimized_text": "自然文本",
         "tokens_used": 8,
         "usage_count": 1,
-        "usage_limit": 3,
+        "usage_limit": 10,
     }
     assert captured_content == "待优化文本"
 
 
-def test_guest_fourth_request_is_rejected(monkeypatch) -> None:
-    """同一访客第四次请求返回 429 且不再调用模型。"""
+def test_guest_eleventh_request_is_rejected(monkeypatch) -> None:
+    """同一访客第十一次请求返回 429 且不再调用模型。"""
     redis_client = FakeRedis()
     client = create_client(redis_client)
     agent = SimpleNamespace(id=1, source=AgentSource.LLM)
@@ -103,7 +103,7 @@ def test_guest_fourth_request_is_rejected(monkeypatch) -> None:
     monkeypatch.setattr(text_optimizer, "create_agno_response", create_response)
     headers = {"X-Guest-ID": "11111111-1111-4111-8111-111111111111"}
 
-    for _ in range(3):
+    for _ in range(10):
         assert (
             client.post(
                 "/api/v1/text-optimizer/guest-optimize",
@@ -120,7 +120,7 @@ def test_guest_fourth_request_is_rejected(monkeypatch) -> None:
     )
 
     assert response.status_code == 429
-    assert calls == 3
+    assert calls == 10
 
 
 def test_guest_usage_is_released_when_model_fails(monkeypatch) -> None:

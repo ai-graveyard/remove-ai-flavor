@@ -34,7 +34,7 @@ Open <http://localhost:3009>. The admin console is available at <http://localhos
 
 ## User flows
 
-- Visitors can enter the optimizer directly and use three free optimizations.
+- Visitors can enter the optimizer directly and use ten free optimizations.
 - A browser-generated UUID is sent as `X-Guest-ID`; remaining uses are mirrored in local storage for UI display.
 - Local drafts preserve source and optimized text across refreshes.
 - Starting a new task clears the current draft after confirmation when content exists.

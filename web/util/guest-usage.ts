@@ -1,5 +1,5 @@
 /** 访客最多可成功优化的次数。 */
-export const GUEST_USAGE_LIMIT = 3
+export const GUEST_USAGE_LIMIT = 10
 
 const GUEST_ID_KEY = 'guest-id'
 const GUEST_USAGE_COUNT_KEY = 'guest-optimize-count'
@@ -47,7 +47,7 @@ export function getGuestUsageCount(): number {
 /**
  * 判断访客是否仍可提交一次文本优化。
  *
- * @returns 已成功使用少于三次时返回 `true`。
+ * @returns 已成功使用少于十次时返回 `true`。
  */
 export function canGuestOptimize(): boolean {
   return getGuestUsageCount() < GUEST_USAGE_LIMIT

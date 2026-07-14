@@ -44,16 +44,17 @@ describe('访客使用量本地存储', () => {
   })
 
   it('成功次数递增但不会超过上限', () => {
-    expect(incrementGuestUsage()).toBe(1)
-    expect(incrementGuestUsage()).toBe(2)
-    expect(incrementGuestUsage()).toBe(3)
+    for (let count = 1; count <= GUEST_USAGE_LIMIT; count += 1) {
+      expect(incrementGuestUsage()).toBe(count)
+    }
+
     expect(incrementGuestUsage()).toBe(GUEST_USAGE_LIMIT)
   })
 
-  it('前三次允许提交，达到三次后拒绝下一次', () => {
+  it('前十次允许提交，达到十次后拒绝下一次', () => {
     expect(canGuestOptimize()).toBe(true)
 
-    setGuestUsageCount(3)
+    setGuestUsageCount(GUEST_USAGE_LIMIT)
 
     expect(canGuestOptimize()).toBe(false)
   })

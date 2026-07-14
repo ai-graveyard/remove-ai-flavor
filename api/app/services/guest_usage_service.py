@@ -1,6 +1,6 @@
 import redis
 
-GUEST_USAGE_LIMIT = 3
+GUEST_USAGE_LIMIT = 10
 GUEST_USAGE_KEY_PREFIX = "guest-optimize"
 GUEST_USAGE_TTL_SECONDS = 30 * 24 * 60 * 60
 
@@ -48,7 +48,7 @@ class GuestUsageService:
     使用 Redis 管理访客文本优化额度。
 
     额度在调用模型前原子预占，调用失败时由调用方归还，避免并发请求
-    同时绕过三次限制。
+    同时绕过十次限制。
     """
 
     def __init__(self, redis_client: redis.Redis) -> None:
@@ -84,7 +84,7 @@ class GuestUsageService:
         - int: 预占后的累计使用次数。
 
         异常:
-        - GuestUsageLimitExceeded: 累计次数已经超过三次。
+        - GuestUsageLimitExceeded: 累计次数已经达到十次。
         """
         key = self._build_key(guest_id)
         # Lua 脚本将递增、过期时间和超限回滚合并为一次原子操作。

@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.guest_usage_service import (
+    GUEST_USAGE_LIMIT,
     GUEST_USAGE_TTL_SECONDS,
     GuestUsageLimitExceeded,
     GuestUsageService,
@@ -40,13 +41,12 @@ class FakeRedis:
         return state["committed"]
 
 
-def test_reserve_allows_three_uses_and_rejects_fourth() -> None:
-    """访客只能成功预占前三次额度。"""
+def test_reserve_allows_limit_uses_and_rejects_next() -> None:
+    """访客可成功预占十次额度，下一次会被拒绝。"""
     service = GuestUsageService(FakeRedis())
 
-    service.reserve("guest-1")
-    service.reserve("guest-1")
-    service.reserve("guest-1")
+    for _ in range(GUEST_USAGE_LIMIT):
+        service.reserve("guest-1")
 
     with pytest.raises(GuestUsageLimitExceeded):
         service.reserve("guest-1")
@@ -55,9 +55,8 @@ def test_reserve_allows_three_uses_and_rejects_fourth() -> None:
 def test_release_returns_reserved_slot_after_failure() -> None:
     """优化失败归还额度后，访客仍可再次使用该次数。"""
     service = GuestUsageService(FakeRedis())
-    service.reserve("guest-1")
-    service.reserve("guest-1")
-    service.reserve("guest-1")
+    for _ in range(GUEST_USAGE_LIMIT):
+        service.reserve("guest-1")
 
     service.release("guest-1")
 

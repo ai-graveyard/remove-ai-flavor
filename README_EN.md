@@ -7,7 +7,7 @@ RAIF is an open-source text optimization tool that reduces formulaic phrasing, e
 ## Features
 
 - **Focused AI-flavor removal**: the backend uses Agno with an OpenAI-compatible model and the bundled `stop-slop` Skill.
-- **Guest access**: visitors can optimize three texts without signing in. Usage is stored in Redis for 30 days against a browser-generated guest ID.
+- **Guest access**: visitors can optimize ten texts without signing in. Usage is stored in Redis for 30 days against a browser-generated guest ID.
 - **Full signed-in workflow**: email-code or password login, registration, password reset, streaming generation, cancellation, history, and new optimization tasks.
 - **Side-by-side editor**: compare source and optimized text while browser storage keeps the current draft.
 - **Tiered Agent access**: free, monthly, and yearly members receive access to different Agent levels.

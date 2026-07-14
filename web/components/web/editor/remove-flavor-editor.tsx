@@ -55,7 +55,7 @@ interface GuestOptimizeResponse {
  * - 每个面板都可以折叠
  * - 自动保存到 localStorage
  * - 登录用户基于 chat 系统进行文本优化
- * - 未登录访客可进行三次无状态文本优化
+ * - 未登录访客可进行十次无状态文本优化
  * - 登录用户首次生成时按需创建新的 chat
  * - 用户可通过侧边栏新建并重置当前优化任务
  */
@@ -364,7 +364,7 @@ export default function RemoveFlavorEditor() {
 
   /**
    * 生成优化后的文本
-   * 登录用户走 chat 流式接口，访客走带三次额度限制的无状态接口。
+   * 登录用户走 chat 流式接口，访客走带十次额度限制的无状态接口。
    */
   const handleGenerate = async () => {
     // 验证输入

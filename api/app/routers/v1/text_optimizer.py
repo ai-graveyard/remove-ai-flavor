@@ -119,13 +119,13 @@ async def guest_optimize_text(
     guest_id: UUID = Header(..., alias="X-Guest-ID"),
 ) -> GuestOptimizeTextResponse:
     """
-    为未登录访客提供最多三次无状态文本优化。
+    为未登录访客提供最多十次无状态文本优化。
 
     权限与限制:
     - 不需要 JWT。
     - 必须携带浏览器持久化的 `X-Guest-ID` UUID。
     - 仅允许使用免费 Agent。
-    - 第四次请求返回 429。
+    - 第十一次请求返回 429。
     """
     text = request.text.strip()
     if not text:
